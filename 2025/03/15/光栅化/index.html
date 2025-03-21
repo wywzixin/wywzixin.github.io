@@ -1,0 +1,258 @@
+<!doctype html>
+<html lang="zh"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1"><meta><meta name="referrer" content="no-referrer"><title>光栅化 - Hexo</title><link rel="manifest" href="/manifest.json"><meta name="application-name" content="Hexo"><meta name="msapplication-TileImage" content="/img/favicon.svg"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="Hexo"><meta name="apple-mobile-web-app-status-bar-style" content="default"><meta name="description" content="光栅化 前边的部分我们学习了MVP矩阵，如何把一个物体投影到一个规则立方体内([-1,1]3)，如何把这个规则立方体内点的物体投影在屏幕上，转变为二维图像，这就是光栅化的过程、  屏幕 把东西画在屏幕上 当进行完 MVP 变换之后，所有需要绘制的点都变换到"><meta property="og:type" content="blog"><meta property="og:title" content="光栅化"><meta property="og:url" content="http://example.com/2025/03/15/%E5%85%89%E6%A0%85%E5%8C%96/"><meta property="og:site_name" content="Hexo"><meta property="og:description" content="光栅化 前边的部分我们学习了MVP矩阵，如何把一个物体投影到一个规则立方体内([-1,1]3)，如何把这个规则立方体内点的物体投影在屏幕上，转变为二维图像，这就是光栅化的过程、  屏幕 把东西画在屏幕上 当进行完 MVP 变换之后，所有需要绘制的点都变换到"><meta property="og:locale" content="zh_CN"><meta property="og:image" content="https://cdn.nlark.com/yuque/0/2024/webp/276041/1717999545282-f2eacd13-67c2-42b6-a1b3-b6de0d67bf2a.webp"><meta property="article:published_time" content="2025-03-14T16:00:00.000Z"><meta property="article:modified_time" content="2025-03-20T18:08:04.526Z"><meta property="article:author" content="John Doe"><meta property="article:tag" content="图形学"><meta property="article:tag" content="渲染"><meta property="twitter:card" content="summary"><meta property="twitter:image:src" content="https://cdn.nlark.com/yuque/0/2024/webp/276041/1717999545282-f2eacd13-67c2-42b6-a1b3-b6de0d67bf2a.webp"><script type="application/ld+json">{"@context":"https://schema.org","@type":"BlogPosting","mainEntityOfPage":{"@type":"WebPage","@id":"http://example.com/2025/03/15/%E5%85%89%E6%A0%85%E5%8C%96/"},"headline":"光栅化","image":["https://cdn.nlark.com/yuque/0/2024/webp/276041/1717999545282-f2eacd13-67c2-42b6-a1b3-b6de0d67bf2a.webp"],"datePublished":"2025-03-14T16:00:00.000Z","dateModified":"2025-03-20T18:08:04.526Z","author":{"@type":"Person","name":"John Doe"},"publisher":{"@type":"Organization","name":"Hexo","logo":{"@type":"ImageObject","url":"http://example.com/img/logo.svg"}},"description":"光栅化 前边的部分我们学习了MVP矩阵，如何把一个物体投影到一个规则立方体内([-1,1]3)，如何把这个规则立方体内点的物体投影在屏幕上，转变为二维图像，这就是光栅化的过程、  屏幕 把东西画在屏幕上 当进行完 MVP 变换之后，所有需要绘制的点都变换到"}</script><link rel="canonical" href="http://example.com/2025/03/15/%E5%85%89%E6%A0%85%E5%8C%96/"><link rel="icon" href="/img/favicon.svg"><link rel="stylesheet" href="https://use.fontawesome.com/releases/v6.0.0/css/all.css"><link data-pjax rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js@11.7.0/styles/atom-one-dark.css"><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Ubuntu:wght@400;600&amp;family=Source+Code+Pro"><link data-pjax rel="stylesheet" href="/css/default.css"><style>body>.footer,body>.navbar,body>.section{opacity:0}</style><!--!--><!--!--><!--!--><!--!--><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/cookieconsent@3.1.1/build/cookieconsent.min.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/lightgallery@1.10.0/dist/css/lightgallery.min.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/justifiedGallery@3.8.1/dist/css/justifiedGallery.min.css"><!--!--><!--!--><!--!--><style>.pace{-webkit-pointer-events:none;pointer-events:none;-webkit-user-select:none;-moz-user-select:none;user-select:none}.pace-inactive{display:none}.pace .pace-progress{background:#3273dc;position:fixed;z-index:2000;top:0;right:100%;width:100%;height:2px}</style><script src="https://cdn.jsdelivr.net/npm/pace-js@1.2.4/pace.min.js"></script><!--!--><!--!--><!-- hexo injector head_end start --><script>
+  (function () {
+      function switchTab() {
+          if (!location.hash) {
+            return;
+          }
+
+          const id = '#' + CSS.escape(location.hash.substring(1));
+          const $tabMenu = document.querySelector(`.tabs a[href="${id}"]`);
+          if (!$tabMenu) {
+            return;
+          }
+
+          const $tabMenuContainer = $tabMenu.parentElement.parentElement;
+          Array.from($tabMenuContainer.children).forEach($menu => $menu.classList.remove('is-active'));
+          Array.from($tabMenuContainer.querySelectorAll('a'))
+              .map($menu => document.getElementById($menu.getAttribute("href").substring(1)))
+              .forEach($content => $content.classList.add('is-hidden'));
+
+          if ($tabMenu) {
+              $tabMenu.parentElement.classList.add('is-active');
+          }
+          const $activeTab = document.querySelector(id);
+          if ($activeTab) {
+              $activeTab.classList.remove('is-hidden');
+          }
+      }
+      switchTab();
+      window.addEventListener('hashchange', switchTab, false);
+  })();
+  </script><!-- hexo injector head_end end --><meta name="generator" content="Hexo 7.3.0"></head><body class="is-3-column"><nav class="navbar navbar-main"><div class="container navbar-container"><div class="navbar-brand justify-content-center"><a class="navbar-item navbar-logo" href="/"><img src="/img/logo.svg" alt="Hexo" height="28"></a></div><div class="navbar-menu"><div class="navbar-start"><a class="navbar-item" href="/">首页</a><a class="navbar-item" href="/archives">归档</a><a class="navbar-item" href="/categories">分类</a><a class="navbar-item" href="/tags">标签</a><a class="navbar-item" href="/about">关于</a></div><div class="navbar-end"><a class="navbar-item" target="_blank" rel="noopener" title="Download on GitHub" href="https://github.com/ppoffice/hexo-theme-icarus"><i class="fab fa-github"></i></a><a class="navbar-item search" title="搜索" href="javascript:;"><i class="fas fa-search"></i></a></div></div></div></nav><section class="section"><div class="container"><div class="columns"><div class="column order-2 column-main is-8-tablet is-8-desktop is-6-widescreen"><div class="card"><article class="card-content article" role="article"><div class="article-meta is-size-7 is-uppercase level is-mobile"><div class="level-left"><span class="level-item"><time dateTime="2025-03-14T16:00:00.000Z" title="2025/3/15 00:00:00">2025-03-15</time>发表</span><span class="level-item"><time dateTime="2025-03-20T18:08:04.526Z" title="2025/3/21 02:08:04">2025-03-21</time>更新</span><span class="level-item"><a class="link-muted" href="/categories/%E5%9B%BE%E5%BD%A2%E5%AD%A6/">图形学</a></span><span class="level-item">17 分钟读完 (大约2548个字)</span></div></div><h1 class="title is-3 is-size-4-mobile">光栅化</h1><div class="content"><h2 id="G6NSD"><font style="color:rgb(37, 41, 51);">光栅化</font></h2>
+<font style="color:rgb(37, 41, 51);">前边的部分我们学习了MVP矩阵，如何把一个物体投影到一个规则立方体内([-1,1]3)，如何把这个规则立方体内点的物体投影在屏幕上，转变为二维图像，这就是光栅化的过程、</font>
+
+<p><font style="color:rgb(37, 41, 51);">屏幕 把东西画在屏幕上</font></p>
+<p><font style="color:rgb(37, 41, 51);">当进行完 MVP 变换之后，所有需要绘制的点都变换到 </font></p>
+<span id="more"></span>
+
+<p><font style="color:rgb(37, 41, 51);"> 的立方体空间中了。</font></p>
+<p><font style="color:rgb(37, 41, 51);"></font></p>
+<p><font style="color:rgb(37, 41, 51);">下一步工作就是要把结果绘制到屏幕上，在这之前先了解一下什么是屏幕。</font></p>
+<p><font style="color:rgb(37, 41, 51);"></font></p>
+<p><font style="color:rgb(37, 41, 51);">屏幕由一系列的像素(Pixel，是 Picture element 的缩写)排布形成，像素的数量由分辨率决定，如分辨率是 1920 x 1080 的屏幕，就包含了 1920 x 1080 个像素。</font></p>
+<p><font style="color:rgb(37, 41, 51);"></font></p>
+<p><font style="color:rgb(37, 41, 51);">每个像素表示的颜色由红（red）、绿（green）、蓝（blue）三种颜色混合而成。</font></p>
+<p><img src="https://cdn.nlark.com/yuque/0/2024/webp/276041/1717999545282-f2eacd13-67c2-42b6-a1b3-b6de0d67bf2a.webp?x-oss-process=image/resize,w_750,limit_0"></p>
+<p><font style="color:rgb(37, 41, 51);"></font></p>
+<p><img src="https://cdn.nlark.com/yuque/0/2024/png/276041/1722851063236-6bec6565-6f55-4feb-b3ec-f7ec68f24b7f.png"></p>
+<p><img src="https://cdn.nlark.com/yuque/0/2024/png/276041/1722851415836-aaa5e990-81e4-443c-83cf-30f9b5dc8424.png"></p>
+<p><img src="https://cdn.nlark.com/yuque/0/2024/png/276041/1722852574573-555b7f09-17a4-414e-a635-e114e8678cfd.png"></p>
+<p><img src="https://cdn.nlark.com/yuque/0/2024/webp/276041/1717999545282-f2eacd13-67c2-42b6-a1b3-b6de0d67bf2a.webp?x-oss-process=image/resize,w_750,limit_0"></p>
+<p><img src="https://cdn.nlark.com/yuque/0/2024/png/276041/1722853229623-0ec5da12-290f-4602-9aa4-7427df03f0b5.png"></p>
+<p><img src="https://cdn.nlark.com/yuque/0/2024/png/276041/1722853590731-771772dc-ab23-4632-8aa4-f63ea2802be3.png"></p>
+<p><img src="https://cdn.nlark.com/yuque/0/2024/png/276041/1722853943107-1103403b-52ee-446a-ab58-8ba2f6c59b06.png"></p>
+<p><img src="https://cdn.nlark.com/yuque/0/2024/png/276041/1722858530008-6eaef802-c067-4267-8a0e-aeacf4683f20.png"></p>
+<p><img src="https://cdn.nlark.com/yuque/0/2024/png/276041/1722861160990-7aa04c14-1d22-48a2-8d9f-099e50d52231.png"></p>
+<p><img src="https://cdn.nlark.com/yuque/0/2024/png/276041/1722861238656-b7588c8a-0d3c-4e3f-9a91-6bb2aecb3d3d.png"></p>
+<p><img src="https://cdn.nlark.com/yuque/0/2024/png/276041/1722861606128-555a981a-e14b-4d42-9d17-869f678ccabd.png"></p>
+<p><img src="https://cdn.nlark.com/yuque/0/2024/png/276041/1722861645543-47ef0607-11e0-4d37-9d4c-2bd125069c9d.png"></p>
+<p><img src="https://cdn.nlark.com/yuque/0/2024/png/276041/1722861912920-a4a6fd27-256e-4e55-8926-309555a01f21.png"></p>
+<p><img src="https://cdn.nlark.com/yuque/0/2024/png/276041/1722862259195-7d66083c-0b73-4e04-a213-21c5c1af0797.png"></p>
+<p><img src="https://cdn.nlark.com/yuque/0/2024/png/276041/1722862335431-7ff05516-753d-44cb-ab47-9e22dc85adde.png"></p>
+<p><img src="https://cdn.nlark.com/yuque/0/2024/png/276041/1722862472974-3ff6d50e-80d3-446c-bb9e-0a5ef79c6d9c.png"></p>
+<p><img src="https://cdn.nlark.com/yuque/0/2024/png/276041/1722862545216-ad731e08-5247-471a-8da0-a8052254c97a.png"></p>
+<p><img src="https://cdn.nlark.com/yuque/0/2024/png/276041/1722862625100-6749292e-cd60-4a9e-b502-1c49fb72cd9f.png"></p>
+<p><img src="https://cdn.nlark.com/yuque/0/2024/png/276041/1722862920510-0fff9789-5cef-49bc-a278-14fe9195c5f1.png"></p>
+<p><img src="https://cdn.nlark.com/yuque/0/2024/png/276041/1722863003833-bb3f2083-1809-45a4-8d6d-89ac77868805.png"></p>
+<p><img src="https://cdn.nlark.com/yuque/0/2024/png/276041/1722863178276-de958697-9de7-40bd-872d-5294d8e65ed2.png"></p>
+<p><img src="https://cdn.nlark.com/yuque/0/2024/png/276041/1722863448633-ce1681d6-f677-4a23-b5c4-ef344b9b99b8.png"></p>
+<h2 id="Y9pNK">抗锯齿</h2>
+<h3 id="xRv7G">MSAA (多重采样抗锯齿)</h3>
+事实上，刚刚提到的计算像素覆盖面积的做法是很难实现的。但我们可以通过超采样的方式来模拟。
+
+<p>所谓的超采样，是指在一个像素里面放多个采样点来检测三角形是否有被覆盖。</p>
+<p><img src="https://cdn.nlark.com/yuque/0/2025/png/276041/1737554199788-2e804518-d7b6-4701-9541-bda3983720a4.png"></p>
+<p><img src="https://cdn.nlark.com/yuque/0/2025/png/276041/1737554324284-4027ff28-9bd5-450d-87bf-9f9af9c2cb98.png"></p>
+<p><img src="https://cdn.nlark.com/yuque/0/2025/png/276041/1737554386908-3e7a6b59-c81b-410a-8ac1-15b7eae898df.png"></p>
+<p><img src="https://cdn.nlark.com/yuque/0/2025/png/276041/1737554398278-7890f04f-3b34-474b-8459-b59d42743bba.png"></p>
+<p>:::color2<br>MSAA 是抗锯齿操作的第一步，也就是模糊操作（求平均）。</p>
+<p>MSAA 增加采样点，并不是为了提高采样率（分辨率没有提高），而是为了得到一个更合理的三角形覆盖率。</p>
+<p>MSAA 的代价是计算量大增，如果一个像素里面有 4 个采样点，那么计算量就大了 4 倍；如果一个像素里面有 16 个采样点，那么计算量就大了 16 倍。（事实上，工业界会会复用、优化这些采样点，因此计算量并没有增加太多）。</p>
+<p>:::</p>
+<p>:::color2<br>工作原理：</p>
+<ul>
+<li><p>对每个像素进行多个采样点采样</p>
+</li>
+<li><p>计算采样点被物体覆盖的比例</p>
+</li>
+<li><p>根据比例决定最终像素颜色</p>
+</li>
+</ul>
+<p>优点：</p>
+<ul>
+<li><p>图像质量好，特别是对几何边缘</p>
+</li>
+<li><p>没有时间性模糊问题</p>
+</li>
+</ul>
+<p>缺点：</p>
+<ul>
+<li><p>性能开销大（采样点越多开销越大）</p>
+</li>
+<li><p>只对几何边缘有效，对材质&#x2F;着色器内部产生的锯齿无效</p>
+</li>
+</ul>
+<p>:::</p>
+<h3 id="egX25">FXAA (快速近似抗锯齿)</h3>
+
+<p>:::color2<br>工作原理：</p>
+<ul>
+<li><p>是后处理抗锯齿技术</p>
+</li>
+<li><p>在渲染完成后检测画面中的边缘</p>
+</li>
+<li><p>对检测到的边缘进行模糊处理</p>
+</li>
+</ul>
+<p>优点：</p>
+<ul>
+<li><p>性能开销小</p>
+</li>
+<li><p>能处理所有类型的锯齿（包括着色器产生的）</p>
+</li>
+</ul>
+<p>缺点：</p>
+<ul>
+<li><p>可能会使画面整体略显模糊</p>
+</li>
+<li><p>可能会丢失一些细节</p>
+</li>
+</ul>
+<p>:::</p>
+<p>:::color2<br>快速近似抗锯齿（Fast Approximate Anti-Aliasing，简称 FXAA）：大致上来说，该方法是在得到最终图像后的一种处理，通过分析最终得到的图像，找到锯齿边缘，通过柔化、模糊等方式处理锯齿边缘，降低锯齿的可视性，来达到抗锯齿的目的。FXAA 具有消耗低，速度快的优点。</p>
+<p>:::</p>
+<p>Cesium 默认使用的是 FXAA (Fast Approximate Anti-aliasing)。可以通过以下代码启用&#x2F;禁用 FXAA：</p>
+<p>选择 FXAA 的原因：</p>
+<p>性能开销小，适合 Web 场景的实时渲染</p>
+<p>实现简单，作为后处理技术易于集成</p>
+<p>对 WebGL 支持良好，兼容性强</p>
+<p>足以满足大多数地理可视化场景的需求</p>
+<h3 id="cEz30">TAA (时间抗锯齿)、</h3>
+:::color2
+工作原理：
+
+<ul>
+<li><p>利用前面几帧的信息</p>
+</li>
+<li><p>在时间维度上进行采样和混合</p>
+</li>
+<li><p>通过抖动采样模式获取子像素信息</p>
+</li>
+</ul>
+<p>优点：</p>
+<ul>
+<li><p>图像质量很好</p>
+</li>
+<li><p>性能开销适中</p>
+</li>
+<li><p>可以处理半透明物体和细节</p>
+</li>
+</ul>
+<p>缺点：</p>
+<ul>
+<li><p>在运动场景中可能产生拖影</p>
+</li>
+<li><p>需要额外存储前帧信息</p>
+</li>
+<li><p>实现复杂度高</p>
+</li>
+</ul>
+<p>:::</p>
+<p>:::color2</p>
+<ul>
+<li><p>MSAA：追求画质、性能够用的场景</p>
+</li>
+<li><p>FXAA：追求性能、对画质要求不是特别高的场景</p>
+</li>
+<li><p>TAA：现代游戏引擎的主流选择，平衡了质量和性能</p>
+</li>
+</ul>
+<p>:::</p>
+<p>:::color2<br>时间性抗锯齿（Temporal Anti-Aliasing，简称 TAA）：和一般的抗锯齿对像素的采样不同，TAA 是对时间的采样，将上一帧已经得到的结果，作为当前帧的参考，避免直接计算当前帧像素的颜色值，而是复用或着说参考像素在之前帧的颜色值。会导致画面比较模糊，且对于运动的物体效果会很不好。TAA 有升级版，即 TXAA，实际为 TAA+MSAA 的组合。</p>
+<p>:::</p>
+<h2 id="t6GuV">重心坐标插值</h2>
+![](https://cdn.nlark.com/yuque/0/2025/png/276041/1737556826723-d1522d16-c7f8-4e03-8669-9e307419150b.png)
+
+<p>当顶点在纹理上的对应 uv 坐标成功找到之后，三角形三个顶点中间的值需要用三角形的重心坐标插值计算得到</p>
+<p>插值的运算不仅仅在纹理中，包括三角形内部的颜色和法线都可以用插值来计算并由此得到一个平滑的过度。</p>
+<p><img src="https://cdn.nlark.com/yuque/0/2025/png/276041/1737557624541-f44e6182-ee4b-43d7-951c-8edd017358f8.png"></p>
+<p><img src="https://cdn.nlark.com/yuque/0/2025/png/276041/1737557721515-3d1af258-eeac-4602-9fa3-f440804f2088.png"></p>
+<p><img src="https://cdn.nlark.com/yuque/0/2025/png/276041/1737557793510-b71fc405-fb16-4f39-bb5c-bfac8b600716.png"></p>
+<p>满足这个说明点 p 在三角形内</p>
+<p><img src="https://cdn.nlark.com/yuque/0/2025/png/276041/1737557889966-83cffdca-f322-4a8e-8b3f-c506821cc3d9.png"></p>
+<p><img src="https://cdn.nlark.com/yuque/0/2025/png/276041/1737557976456-b28fd1cc-4f42-4681-8f75-c0b475bb1804.png"></p>
+<p>这是求出了 p 点的纹理坐标</p>
+<p><img src="https://cdn.nlark.com/yuque/0/2025/png/276041/1737558408791-e1f3039e-1865-4add-8f17-bafc54591911.png"></p>
+<p>重心坐标(Barycentric Coordinates)是在计算机图形学中用于在三角形内部进行插值的一种技术。它的基本思想是：三角形内的任意一点都可以用三个权重来表示，这些权重表示了该点受三角形三个顶点的影响程度。</p>
+<p>基本定义</p>
+<p>假设有一个三角形 ABC，内部任意一点 P 可以表示为：P &#x3D; αA + βB + γC ,其中 α + β + γ &#x3D; 1，且 α,β,γ ≥ 0</p>
+<p>α &#x3D; Area(PBC)&#x2F;Area(ABC)</p>
+<p>β &#x3D; Area(PCA)&#x2F;Area(ABC)</p>
+<p>γ &#x3D; Area(PAB)&#x2F;Area(ABC)</p>
+<p><img src="https://cdn.nlark.com/yuque/0/2025/png/276041/1737558787161-683d274e-eda9-4e58-bc40-5ba6ad2d9c0e.png"></p>
+<p>重心坐标的表示就是(α,β,γ),如 A 点的重心坐标就是(1,0,0)。那么如何确定任意一点的重心坐标呢？这里要通过面积比来算，如上图中一点的坐标，α,β,γ 各个值就是另两个顶点连成的三角形在总面积的占比，如上图所示。</p>
+<p>因为 ACA 的面积是 0， 所以 A 点的 β 是 0</p>
+<p><img src="https://cdn.nlark.com/yuque/0/2025/png/276041/1737558922148-db4f2a7c-3082-484d-97e9-4397536499e5.png"></p>
+<p>而通过如上的表示，我们马上可以找到一个及其特殊的点，就是三角形自己的重心，它的重心坐标是(1&#x2F;3,1&#x2F;3,1&#x2F;3)，这个点与三个顶点连线分成的三个三角形面积也恰好相等。</p>
+<p><img src="https://cdn.nlark.com/yuque/0/2025/png/276041/1737558956511-874d95a7-b8a2-44db-9118-5dffb5183dca.png"></p>
+<p>上图为对于三角形内任意一点的重心坐标计算的通用表达式</p>
+<p><img src="https://cdn.nlark.com/yuque/0/2025/png/276041/1737559043238-fe738a95-6092-4f56-aa22-7b89779f8283.png"></p>
+<p><font style="color:rgb(25, 27, 31);">通过以上的介绍，我们知道了三角形内部的任意一点的坐标可以通过重心坐标求出表示出来，那么我们也可以利用重心坐标求三角形内部任意一点的其它属性，其他三角形内部的属性也可以用重心坐标的线性组合表示出来，</font><strong><font style="color:rgb(25, 27, 31);">如上图的颜色插值</font></strong><font style="color:rgb(25, 27, 31);">。（注意：重心坐标并没有投影下不变的性质，所以在插值如深度这种空间中的性质时，应该先在 3D 空间中用三维的坐标算出三维空间中的重心坐标进行插值，然后再放回而不能直接在投影之后的三角形中做插值。至于如何在已经投影的三角形在回到三维空间，应用逆变换即可。）</font></p>
+<p><font style="color:rgb(25, 27, 31);"></font></p>
+<figure class="highlight javascript"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// 假设三个顶点都有颜色属性</span></span><br><span class="line"><span class="title class_">Color</span> interpolatedColor = α * colorA + β * colorB + γ * colorC;</span><br><span class="line"></span><br><span class="line"><span class="comment">// 纹理坐标插值</span></span><br><span class="line"><span class="variable constant_">UV</span> interpolatedUV = α * uvA + β * uvB + γ * uvC;</span><br></pre></td></tr></table></figure>
+</div><div class="article-licensing box"><div class="licensing-title"><p>光栅化</p><p><a href="http://example.com/2025/03/15/光栅化/">http://example.com/2025/03/15/光栅化/</a></p></div><div class="licensing-meta level is-mobile"><div class="level-left"><div class="level-item is-narrow"><div><h6>作者</h6><p>John Doe</p></div></div><div class="level-item is-narrow"><div><h6>发布于</h6><p>2025-03-15</p></div></div><div class="level-item is-narrow"><div><h6>更新于</h6><p>2025-03-21</p></div></div><div class="level-item is-narrow"><div><h6>许可协议</h6><p><a class="icons" rel="noopener" target="_blank" title="Creative Commons" href="https://creativecommons.org/"><i class="icon fab fa-creative-commons"></i></a><a class="icons" rel="noopener" target="_blank" title="Attribution" href="https://creativecommons.org/licenses/by/4.0/"><i class="icon fab fa-creative-commons-by"></i></a><a class="icons" rel="noopener" target="_blank" title="Noncommercial" href="https://creativecommons.org/licenses/by-nc/4.0/"><i class="icon fab fa-creative-commons-nc"></i></a></p></div></div></div></div></div><div class="article-tags is-size-7 mb-4"><span class="mr-2">#</span><a class="link-muted mr-2" rel="tag" href="/tags/%E5%9B%BE%E5%BD%A2%E5%AD%A6/">图形学</a><a class="link-muted mr-2" rel="tag" href="/tags/%E6%B8%B2%E6%9F%93/">渲染</a></div><!--!--></article></div><!--!--><nav class="post-navigation mt-4 level is-mobile"><div class="level-start"><a class="article-nav-prev level level-item link-muted" href="/2025/03/16/cesium%E7%83%9F%E9%9B%BE%E7%B2%92%E5%AD%90%E8%AE%BE%E7%BD%AE%E9%A3%8E%E9%80%9F%E5%92%8C%E9%A3%8E%E5%90%91/"><i class="level-item fas fa-chevron-left"></i><span class="level-item">cesium烟雾粒子设置风速和风向</span></a></div></nav><!--!--></div><div class="column column-left is-4-tablet is-4-desktop is-3-widescreen  order-1"><div class="card widget" data-type="profile"><div class="card-content"><nav class="level"><div class="level-item has-text-centered flex-shrink-1"><div><figure class="image is-128x128 mx-auto mb-2"><img class="avatar" src="/img/avatar.png" alt="王亚伟"></figure><p class="title is-size-4 is-block" style="line-height:inherit;">王亚伟</p><p class="is-size-6 is-block">Coder</p><p class="is-size-6 is-flex justify-content-center"><i class="fas fa-map-marker-alt mr-1"></i><span>北京</span></p></div></div></nav><nav class="level is-mobile"><div class="level-item has-text-centered is-marginless"><div><p class="heading">文章</p><a href="/archives/"><p class="title">19</p></a></div></div><div class="level-item has-text-centered is-marginless"><div><p class="heading">分类</p><a href="/categories/"><p class="title">2</p></a></div></div><div class="level-item has-text-centered is-marginless"><div><p class="heading">标签</p><a href="/tags/"><p class="title">3</p></a></div></div></nav><div class="level"><a class="level-item button is-primary is-rounded" href="https://github.com/wywzixin" target="_blank" rel="me noopener">关注我</a></div><div class="level is-mobile is-multiline"><a class="level-item button is-transparent is-marginless" target="_blank" rel="me noopener" title="Github" href="https://github.com/wywzixin"><i class="fab fa-github"></i></a><a class="level-item button is-transparent is-marginless" target="_blank" rel="me noopener" title="Facebook" href="https://facebook.com"><i class="fab fa-facebook"></i></a><a class="level-item button is-transparent is-marginless" target="_blank" rel="me noopener" title="Twitter" href="https://twitter.com"><i class="fab fa-twitter"></i></a><a class="level-item button is-transparent is-marginless" target="_blank" rel="me noopener" title="Dribbble" href="https://dribbble.com"><i class="fab fa-dribbble"></i></a><a class="level-item button is-transparent is-marginless" target="_blank" rel="me noopener" title="RSS" href="/"><i class="fas fa-rss"></i></a></div></div></div><!--!--><div class="card widget" data-type="links"><div class="card-content"><div class="menu"><h3 class="menu-label">链接</h3><ul class="menu-list"><li><a class="level is-mobile" href="https://hexo.io" target="_blank" rel="noopener"><span class="level-left"><span class="level-item">Hexo</span></span><span class="level-right"><span class="level-item tag">hexo.io</span></span></a></li><li><a class="level is-mobile" href="https://bulma.io" target="_blank" rel="noopener"><span class="level-left"><span class="level-item">Bulma</span></span><span class="level-right"><span class="level-item tag">bulma.io</span></span></a></li></ul></div></div></div><div class="card widget" data-type="categories"><div class="card-content"><div class="menu"><h3 class="menu-label">分类</h3><ul class="menu-list"><li><a class="level is-mobile" href="/categories/cesium/"><span class="level-start"><span class="level-item">cesium</span></span><span class="level-end"><span class="level-item tag">18</span></span></a></li><li><a class="level is-mobile" href="/categories/%E5%9B%BE%E5%BD%A2%E5%AD%A6/"><span class="level-start"><span class="level-item">图形学</span></span><span class="level-end"><span class="level-item tag">1</span></span></a></li></ul></div></div></div><div class="card widget" data-type="tags"><div class="card-content"><div class="menu"><h3 class="menu-label">标签</h3><div class="field is-grouped is-grouped-multiline"><div class="control"><a class="tags has-addons" href="/tags/cesium/"><span class="tag">cesium</span><span class="tag">18</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E5%9B%BE%E5%BD%A2%E5%AD%A6/"><span class="tag">图形学</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E6%B8%B2%E6%9F%93/"><span class="tag">渲染</span><span class="tag">1</span></a></div></div></div></div></div><div class="card widget" data-type="subscribe-email"><div class="card-content"><div class="menu"><h3 class="menu-label">订阅更新</h3><form action="https://feedburner.google.com/fb/a/mailverify" method="post" target="popupwindow" onsubmit="window.open(&#039;https://feedburner.google.com/fb/a/mailverify?uri=&#039;,&#039;popupwindow&#039;,&#039;scrollbars=yes,width=550,height=520&#039;);return true"><input type="hidden" value="" name="uri"><input type="hidden" name="loc" value="en_US"><div class="field has-addons"><div class="control has-icons-left is-expanded"><input class="input" name="email" type="email" placeholder="Email"><span class="icon is-small is-left"><i class="fas fa-envelope"></i></span></div><div class="control"><input class="button" type="submit" value="订阅"></div></div></form></div></div></div><div class="column-right-shadow is-hidden-widescreen"></div></div><div class="column column-right is-4-tablet is-4-desktop is-3-widescreen is-hidden-touch is-hidden-desktop-only order-3"><div class="card widget" data-type="recent-posts"><div class="card-content"><h3 class="menu-label">最新文章</h3><article class="media"><div class="media-content"><p class="date"><time dateTime="2025-03-19T16:00:00.000Z">2025-03-20</time></p><p class="title"><a href="/2025/03/20/cesium%20indexDB%E7%BC%93%E5%AD%98%E6%A8%A1%E5%9E%8B/">cesium indexDB缓存模型</a></p><p class="categories"><a href="/categories/cesium/">cesium</a></p></div></article><article class="media"><div class="media-content"><p class="date"><time dateTime="2025-03-15T16:00:00.000Z">2025-03-16</time></p><p class="title"><a href="/2025/03/16/cesium%20drawcommand%20%E7%BB%98%E5%88%B6%E4%B8%89%E8%A7%92%E5%BD%A2/">Cesium 自定义 Primitive 实现三角形绘制</a></p><p class="categories"><a href="/categories/cesium/">cesium</a></p></div></article><article class="media"><div class="media-content"><p class="date"><time dateTime="2025-03-15T16:00:00.000Z">2025-03-16</time></p><p class="title"><a href="/2025/03/16/cesium%20drawcommand/">ccesium drawcommand介绍</a></p><p class="categories"><a href="/categories/cesium/">cesium</a></p></div></article><article class="media"><div class="media-content"><p class="date"><time dateTime="2025-03-15T16:00:00.000Z">2025-03-16</time></p><p class="title"><a href="/2025/03/16/cesium%20%E4%BA%8C%E7%BB%B4%E4%B8%8B%E8%8E%B7%E5%8F%96%E7%9B%B8%E6%9C%BA%E4%BD%8D%E7%BD%AE/">cesium 二维下获取相机位置</a></p><p class="categories"><a href="/categories/cesium/">cesium</a></p></div></article><article class="media"><div class="media-content"><p class="date"><time dateTime="2025-03-15T16:00:00.000Z">2025-03-16</time></p><p class="title"><a href="/2025/03/16/cesium%20%E4%BF%AE%E6%94%B9%E6%BA%90%E7%A0%81%E8%8E%B7%E5%8F%96wmts%E5%9B%BE%E5%B1%82%E7%9A%84bbox/">cesium 修改源码获取wmts图层的bbox</a></p><p class="categories"><a href="/categories/cesium/">cesium</a></p></div></article></div></div><div class="card widget" data-type="archives"><div class="card-content"><div class="menu"><h3 class="menu-label">归档</h3><ul class="menu-list"><li><a class="level is-mobile" href="/archives/2025/03/"><span class="level-start"><span class="level-item">三月 2025</span></span><span class="level-end"><span class="level-item tag">19</span></span></a></li></ul></div></div></div></div></div></div></section><footer class="footer"><div class="container"><div class="level"><div class="level-start"><a class="footer-logo is-block mb-2" href="/"><img src="/img/logo.svg" alt="Hexo" height="28"></a><p class="is-size-7"><span>&copy; 2025 John Doe</span>  Powered by <a href="https://hexo.io/" target="_blank" rel="noopener">Hexo</a> &amp; <a href="https://github.com/ppoffice/hexo-theme-icarus" target="_blank" rel="noopener">Icarus</a></p><p class="is-size-7">© 2019</p></div><div class="level-end"><div class="field has-addons"><p class="control"><a class="button is-transparent is-large" target="_blank" rel="noopener" title="Creative Commons" href="https://creativecommons.org/"><i class="fab fa-creative-commons"></i></a></p><p class="control"><a class="button is-transparent is-large" target="_blank" rel="noopener" title="Attribution 4.0 International" href="https://creativecommons.org/licenses/by/4.0/"><i class="fab fa-creative-commons-by"></i></a></p><p class="control"><a class="button is-transparent is-large" target="_blank" rel="noopener" title="Download on GitHub" href="https://github.com/ppoffice/hexo-theme-icarus"><i class="fab fa-github"></i></a></p></div></div></div></div></footer><script src="https://cdn.jsdelivr.net/npm/jquery@3.3.1/dist/jquery.min.js"></script><script src="https://cdn.jsdelivr.net/npm/moment@2.22.2/min/moment-with-locales.min.js"></script><script src="https://cdn.jsdelivr.net/npm/clipboard@2.0.4/dist/clipboard.min.js" defer></script><script>moment.locale("zh-cn");</script><script>var IcarusThemeSettings = {
+            article: {
+                highlight: {
+                    clipboard: true,
+                    fold: 'unfolded'
+                }
+            }
+        };</script><script data-pjax src="/js/column.js"></script><script src="/js/animation.js"></script><a id="back-to-top" title="回到顶端" href="javascript:;"><i class="fas fa-chevron-up"></i></a><script data-pjax src="/js/back_to_top.js" defer></script><!--!--><!--!--><!--!--><script src="https://cdn.jsdelivr.net/npm/cookieconsent@3.1.1/build/cookieconsent.min.js" defer></script><script>window.addEventListener("load", () => {
+      window.cookieconsent.initialise({
+        type: "info",
+        theme: "edgeless",
+        static: false,
+        position: "bottom-left",
+        content: {
+          message: "此网站使用Cookie来改善您的体验。",
+          dismiss: "知道了！",
+          allow: "允许使用Cookie",
+          deny: "拒绝",
+          link: "了解更多",
+          policy: "Cookie政策",
+          href: "https://www.cookiesandyou.com/",
+        },
+        palette: {
+          popup: {
+            background: "#edeff5",
+            text: "#838391"
+          },
+          button: {
+            background: "#4b81e8"
+          },
+        },
+      });
+    });</script><script src="https://cdn.jsdelivr.net/npm/lightgallery@1.10.0/dist/js/lightgallery.min.js" defer></script><script src="https://cdn.jsdelivr.net/npm/justifiedGallery@3.8.1/dist/js/jquery.justifiedGallery.min.js" defer></script><script>window.addEventListener("load", () => {
+            if (typeof $.fn.lightGallery === 'function') {
+                $('.article').lightGallery({ selector: '.gallery-item' });
+            }
+            if (typeof $.fn.justifiedGallery === 'function') {
+                if ($('.justified-gallery > p > .gallery-item').length) {
+                    $('.justified-gallery > p > .gallery-item').unwrap();
+                }
+                $('.justified-gallery').justifiedGallery();
+            }
+        });</script><!--!--><!--!--><script src="https://cdn.jsdelivr.net/npm/pjax@0.2.8/pjax.min.js"></script><script src="/js/pjax.js"></script><!--!--><!--!--><!--!--><script data-pjax src="/js/main.js" defer></script><div class="searchbox"><div class="searchbox-container"><div class="searchbox-header"><div class="searchbox-input-container"><input class="searchbox-input" type="text" placeholder="想要查找什么..."></div><a class="searchbox-close" href="javascript:;">×</a></div><div class="searchbox-body"></div></div></div><script data-pjax src="/js/insight.js" defer></script><script data-pjax>document.addEventListener('DOMContentLoaded', function () {
+            loadInsight({"contentUrl":"/content.json"}, {"hint":"想要查找什么...","untitled":"(无标题)","posts":"文章","pages":"页面","categories":"分类","tags":"标签"});
+        });</script></body></html>
