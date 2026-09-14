@@ -1,0 +1,486 @@
+<!doctype html>
+<html lang="zh"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1"><meta><meta name="referrer" content="no-referrer"><title>python基本语法 - Hexo</title><link rel="manifest" href="/manifest.json"><meta name="application-name" content="Hexo"><meta name="msapplication-TileImage" content="/img/favicon.svg"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="Hexo"><meta name="apple-mobile-web-app-status-bar-style" content="default"><meta name="description" content="一份 Python 基础语法整理：三元表达式、and &amp;#x2F; or &amp;#x2F; not 和默认值写法、列表推导式、lambda、tuple、yield 生成器、try &amp;#x2F; except、with ... as ...、类型标注、@dataclass、Literal。每条都先说是干什么用的，再上代码。"><meta property="og:type" content="blog"><meta property="og:title" content="python基本语法"><meta property="og:url" content="https://wywzixin.github.io/python/basic-syntax/"><meta property="og:site_name" content="Hexo"><meta property="og:description" content="一份 Python 基础语法整理：三元表达式、and &amp;#x2F; or &amp;#x2F; not 和默认值写法、列表推导式、lambda、tuple、yield 生成器、try &amp;#x2F; except、with ... as ...、类型标注、@dataclass、Literal。每条都先说是干什么用的，再上代码。"><meta property="og:locale" content="zh_CN"><meta property="og:image" content="https://wywzixin.github.io/img/og_image.png"><meta property="article:published_time" content="2026-09-13T16:00:00.000Z"><meta property="article:modified_time" content="2026-09-14T13:54:51.071Z"><meta property="article:author" content="wangyawei"><meta property="article:tag" content="python"><meta property="twitter:card" content="summary"><meta property="twitter:image:src" content="https://wywzixin.github.io/img/og_image.png"><script type="application/ld+json">{"@context":"https://schema.org","@type":"BlogPosting","mainEntityOfPage":{"@type":"WebPage","@id":"https://wywzixin.github.io/python/basic-syntax/"},"headline":"python基本语法","image":["https://wywzixin.github.io/img/og_image.png"],"datePublished":"2026-09-13T16:00:00.000Z","dateModified":"2026-09-14T13:54:51.071Z","author":{"@type":"Person","name":"wangyawei"},"publisher":{"@type":"Organization","name":"Hexo","logo":{"@type":"ImageObject","url":"https://wywzixin.github.io/img/logo.svg"}},"description":"一份 Python 基础语法整理：三元表达式、and &#x2F; or &#x2F; not 和默认值写法、列表推导式、lambda、tuple、yield 生成器、try &#x2F; except、with ... as ...、类型标注、@dataclass、Literal。每条都先说是干什么用的，再上代码。"}</script><link rel="canonical" href="https://wywzixin.github.io/python/basic-syntax/"><link rel="icon" href="/img/favicon.svg"><style>html,body{background:#f7f7f7}</style><link rel="stylesheet" href="https://use.fontawesome.com/releases/v6.0.0/css/all.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js@11.7.0/styles/atom-one-dark.css"><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Ubuntu:wght@400;600&amp;family=Source+Code+Pro"><link rel="stylesheet" href="/css/default.css"><!--!--><!--!--><!--!--><!--!--><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/cookieconsent@3.1.1/build/cookieconsent.min.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/lightgallery@1.10.0/dist/css/lightgallery.min.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/justifiedGallery@3.8.1/dist/css/justifiedGallery.min.css"><!--!--><!--!--><!--!--><style>.pace{-webkit-pointer-events:none;pointer-events:none;-webkit-user-select:none;-moz-user-select:none;user-select:none}.pace-inactive{display:none}.pace .pace-progress{background:#3273dc;position:fixed;z-index:2000;top:0;right:100%;width:100%;height:2px}</style><script src="https://cdn.jsdelivr.net/npm/pace-js@1.2.4/pace.min.js"></script><!--!--><!--!--><!-- hexo injector head_end start --><script>
+  (function () {
+      function switchTab() {
+          if (!location.hash) {
+            return;
+          }
+
+          const id = '#' + CSS.escape(location.hash.substring(1));
+          const $tabMenu = document.querySelector(`.tabs a[href="${id}"]`);
+          if (!$tabMenu) {
+            return;
+          }
+
+          const $tabMenuContainer = $tabMenu.parentElement.parentElement;
+          Array.from($tabMenuContainer.children).forEach($menu => $menu.classList.remove('is-active'));
+          Array.from($tabMenuContainer.querySelectorAll('a'))
+              .map($menu => document.getElementById($menu.getAttribute("href").substring(1)))
+              .forEach($content => $content.classList.add('is-hidden'));
+
+          if ($tabMenu) {
+              $tabMenu.parentElement.classList.add('is-active');
+          }
+          const $activeTab = document.querySelector(id);
+          if ($activeTab) {
+              $activeTab.classList.remove('is-hidden');
+          }
+      }
+      switchTab();
+      window.addEventListener('hashchange', switchTab, false);
+  })();
+  </script><!-- hexo injector head_end end --><meta name="generator" content="Hexo 7.3.0"></head><body class="is-3-column"><nav class="navbar navbar-main"><div class="container navbar-container"><div class="navbar-brand justify-content-center"><a class="navbar-item navbar-logo" href="/"><img src="/img/logo.svg" alt="Hexo" height="28"></a></div><div class="navbar-menu"><div class="navbar-start"><a class="navbar-item" href="/">首页</a><a class="navbar-item" href="/archives">归档</a><a class="navbar-item" href="/categories">分类</a><a class="navbar-item" href="/tags">标签</a><a class="navbar-item" href="/about">关于</a></div><div class="navbar-end"><a class="navbar-item" target="_blank" rel="noopener" title="Download on GitHub" href="https://github.com/ppoffice/hexo-theme-icarus"><i class="fab fa-github"></i></a><a class="navbar-item search" title="搜索" href="javascript:;"><i class="fas fa-search"></i></a></div></div></div></nav><section class="section"><div class="container"><div class="columns"><div class="column order-2 column-main is-8-tablet is-8-desktop is-6-widescreen"><div class="card"><article class="card-content article" role="article"><div class="article-meta is-size-7 is-uppercase level is-mobile"><div class="level-left"><span class="level-item"><time dateTime="2026-09-13T16:00:00.000Z" title="2026/9/14 00:00:00">2026-09-14</time>发表</span><span class="level-item"><time dateTime="2026-09-14T13:54:51.071Z" title="2026/9/14 21:54:51">2026-09-14</time>更新</span><span class="level-item"><a class="link-muted" href="/categories/python/">python</a></span><span class="level-item">34 分钟读完 (大约5076个字)</span></div></div><h1 class="title is-3 is-size-4-mobile">python基本语法</h1><div class="content"><p>这份笔记整理的是 Python 的基础语法：三元表达式、<code>and</code> &#x2F; <code>or</code> &#x2F; <code>not</code>、列表推导式、<code>lambda</code>、<code>tuple</code>、<code>yield</code> 生成器、<code>try / except</code>、<code>with ... as ...</code>、类型标注、<code>@dataclass</code>、<code>Literal</code>。</p>
+<p>这些都是和js不一样的，所以放在这里边讲一下。</p>
+<span id="more"></span>
+
+<h2 id="1-三元表达式"><a href="#1-三元表达式" class="headerlink" title="1. 三元表达式"></a>1. 三元表达式</h2><p>Python 的三元表达式，写法是把”取哪个值”写在前面，条件夹在中间：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">值<span class="number">1</span> <span class="keyword">if</span> 条件 <span class="keyword">else</span> 值<span class="number">2</span></span><br></pre></td></tr></table></figure>
+
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">args = json.loads(json_accum) <span class="keyword">if</span> json_accum <span class="keyword">else</span> &#123;&#125;</span><br></pre></td></tr></table></figure>
+
+<p>读法就是英语语序——<strong>“用 A，如果条件成立；否则用 B”</strong>。Python 强调可读性，官方认为 <code>A if 条件 else B</code> 这种写法更接近自然语言。</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">age = <span class="number">20</span></span><br><span class="line">status = <span class="string">&quot;成年&quot;</span> <span class="keyword">if</span> age &gt;= <span class="number">18</span> <span class="keyword">else</span> <span class="string">&quot;未成年&quot;</span></span><br></pre></td></tr></table></figure>
+
+<p>嵌套也能写，但别写：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">result = <span class="string">&quot;A&quot;</span> <span class="keyword">if</span> x &gt; <span class="number">0</span> <span class="keyword">else</span> <span class="string">&quot;B&quot;</span> <span class="keyword">if</span> x &lt; <span class="number">0</span> <span class="keyword">else</span> <span class="string">&quot;C&quot;</span></span><br></pre></td></tr></table></figure>
+
+<p>这行能跑，但三个分支压在一行里，读的人得来回数 <code>if</code> 和 <code>else</code> 才配得上对。超过两个分支就换回 <code>if / elif / else</code>。</p>
+<h2 id="2-and-or-not-和默认值写法"><a href="#2-and-or-not-和默认值写法" class="headerlink" title="2. and &#x2F; or &#x2F; not 和默认值写法"></a>2. <code>and</code> &#x2F; <code>or</code> &#x2F; <code>not</code> 和默认值写法</h2><p>三个逻辑运算符：</p>
+<table>
+<thead>
+<tr>
+<th>运算符</th>
+<th>含义</th>
+<th>例子</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>and</code></td>
+<td>并且（两边都为真才为真）</td>
+<td><code>A and B</code></td>
+</tr>
+<tr>
+<td><code>or</code></td>
+<td>或者（有一个为真就为真）</td>
+<td><code>A or B</code></td>
+</tr>
+<tr>
+<td><code>not</code></td>
+<td>取反</td>
+<td><code>not A</code></td>
+</tr>
+</tbody></table>
+<p><code>or</code> 最常见的一个用法是<strong>设置默认值</strong>：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">timeout = options.get(<span class="string">&quot;timeout&quot;</span>) <span class="keyword">or</span> <span class="number">30</span></span><br></pre></td></tr></table></figure>
+
+<p>它取的是”第一个为真的值”。所以要判断这个写法合不合适，得先知道 <strong>Python 里哪些值算假</strong>：</p>
+<table>
+<thead>
+<tr>
+<th>值</th>
+<th>真 &#x2F; 假</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>False</code></td>
+<td>假</td>
+</tr>
+<tr>
+<td><code>None</code></td>
+<td>假</td>
+</tr>
+<tr>
+<td><code>0</code>、<code>0.0</code></td>
+<td>假</td>
+</tr>
+<tr>
+<td><code>&quot;&quot;</code></td>
+<td>假</td>
+</tr>
+<tr>
+<td><code>[]</code>、<code>()</code>、<code>&#123;&#125;</code>、<code>set()</code></td>
+<td>假</td>
+</tr>
+<tr>
+<td>其它（包括 <code>float(&quot;nan&quot;)</code>）</td>
+<td>真</td>
+</tr>
+</tbody></table>
+<p><strong>空容器一律是假值</strong>，这一点要记住。所以上面那句里，传进来的 <code>0</code>、<code>&quot;&quot;</code>、<code>[]</code> 都会被换成 30。</p>
+<p>如果 0 是一个合法的取值，就不能这么写，只能显式判断：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">timeout = options.get(<span class="string">&quot;timeout&quot;</span>)</span><br><span class="line"><span class="keyword">if</span> timeout <span class="keyword">is</span> <span class="literal">None</span>:</span><br><span class="line">    timeout = <span class="number">30</span></span><br></pre></td></tr></table></figure>
+
+<h3 id="一段实际的兜底代码"><a href="#一段实际的兜底代码" class="headerlink" title="一段实际的兜底代码"></a>一段实际的兜底代码</h3><figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">if</span> <span class="keyword">not</span> input_tokens <span class="keyword">and</span> delta_input_tokens:</span><br><span class="line">    input_tokens = delta_input_tokens</span><br></pre></td></tr></table></figure>
+
+<p>逐词拆开：</p>
+<table>
+<thead>
+<tr>
+<th>部分</th>
+<th>含义</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>not input_tokens</code></td>
+<td><code>input_tokens</code> 是假值（0、None、空等）</td>
+</tr>
+<tr>
+<td><code>and</code></td>
+<td>并且</td>
+</tr>
+<tr>
+<td><code>delta_input_tokens</code></td>
+<td><code>delta_input_tokens</code> 有真实值</td>
+</tr>
+<tr>
+<td>整体</td>
+<td>如果原来的是空的，并且备用值有内容，就用备用值替换</td>
+</tr>
+</tbody></table>
+<p>翻译过来就是：<strong>如果 <code>input_tokens</code> 没有值，并且 <code>delta_input_tokens</code> 有值，就把 <code>delta_input_tokens</code> 赋给 <code>input_tokens</code>。</strong></p>
+<p>为什么需要这层兜底？因为有些兼容 Claude 的 provider（MiniMax 这类）在 <code>message_start</code> 里把 <code>input_tokens</code> 报成 0，真正的用量藏在后面的 <code>message_delta</code> 里。所以逻辑是：</p>
+<ol>
+<li>优先用 <code>message_start</code> 里的 usage</li>
+<li>如果它是 0（没拿到），就降级使用之前从 <code>message_delta</code> 里抓到的 <code>delta_xxx</code> 值</li>
+</ol>
+<p>这就是一种兼容兜底写法。</p>
+<h2 id="3-列表推导式"><a href="#3-列表推导式" class="headerlink" title="3. 列表推导式"></a>3. 列表推导式</h2><p>Python 的列表推导式（List Comprehension），语法本身就支持”一边过滤一边转换”：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">parts = [s.content.strip() <span class="keyword">for</span> s <span class="keyword">in</span> <span class="variable language_">self</span>._sections <span class="keyword">if</span> s.content.strip()]</span><br></pre></td></tr></table></figure>
+
+<p>等价于下面这段普通写法：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">parts = []</span><br><span class="line"></span><br><span class="line"><span class="keyword">for</span> s <span class="keyword">in</span> <span class="variable language_">self</span>._sections:</span><br><span class="line">    <span class="keyword">if</span> s.content.strip():                  <span class="comment"># 过滤条件</span></span><br><span class="line">        parts.append(s.content.strip())    <span class="comment"># 转换 + 收集</span></span><br></pre></td></tr></table></figure>
+
+<p>结构读法：<code>[对每个元素做什么 for 元素 in 集合 if 条件]</code>。<strong><code>for</code> 前面的表达式是转换，<code>if</code> 是过滤</strong>，一前一后，别搞混。</p>
+<p>上面那句 <code>strip()</code> 被算了两遍（判断一次、取值一次）。要省掉重复计算，用海象运算符在条件里赋值：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">parts = [t <span class="keyword">for</span> s <span class="keyword">in</span> <span class="variable language_">self</span>._sections <span class="keyword">if</span> (t := s.content.strip())]</span><br></pre></td></tr></table></figure>
+
+<p>还有一个容易搞错的地方：<strong>推导式有自己的作用域</strong>，循环变量不会漏到外面。</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">[x <span class="keyword">for</span> x <span class="keyword">in</span> <span class="built_in">range</span>(<span class="number">3</span>)]</span><br><span class="line"><span class="built_in">print</span>(x)      <span class="comment"># NameError: name &#x27;x&#x27; is not defined</span></span><br></pre></td></tr></table></figure>
+
+<p>除了列表，字典和集合也能这么写：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">&#123;name: <span class="built_in">len</span>(name) <span class="keyword">for</span> name <span class="keyword">in</span> names&#125;    <span class="comment"># 字典推导式</span></span><br><span class="line">&#123;<span class="built_in">len</span>(s) <span class="keyword">for</span> s <span class="keyword">in</span> sections&#125;             <span class="comment"># 集合推导式</span></span><br></pre></td></tr></table></figure>
+
+<h2 id="4-lambda：写匿名函数"><a href="#4-lambda：写匿名函数" class="headerlink" title="4. lambda：写匿名函数"></a>4. <code>lambda</code>：写匿名函数</h2><p><code>lambda</code> 是 Python 里用来写<strong>匿名函数</strong>的语法（没有名字的函数）。</p>
+<p>基本语法：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">lambda</span> 参数: 表达式</span><br></pre></td></tr></table></figure>
+
+<p>它等价于一个很简单的函数，但不用写 <code>def</code>。对比一下，用 <code>def</code> 写：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">def</span> <span class="title function_">get_length</span>(<span class="params">tr</span>):</span><br><span class="line">    <span class="keyword">return</span> <span class="built_in">len</span>(tr.content)</span><br></pre></td></tr></table></figure>
+
+<p>用 <code>lambda</code> 写，效果完全一样：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">lambda</span> tr: <span class="built_in">len</span>(tr.content)</span><br></pre></td></tr></table></figure>
+
+<h3 id="在排序里的用法"><a href="#在排序里的用法" class="headerlink" title="在排序里的用法"></a>在排序里的用法</h3><figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">ranked = <span class="built_in">sorted</span>(remaining, key=<span class="keyword">lambda</span> tr: <span class="built_in">len</span>(tr.content))</span><br></pre></td></tr></table></figure>
+
+<p>这里的 <code>lambda tr: len(tr.content)</code> 就是告诉 <code>sorted</code>：<strong>请按照每个元素的 <code>content</code> 长度来排序</strong>。</p>
+<p>如果不写 <code>lambda</code>，就得先定义一个函数再传进去，会麻烦一些：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">def</span> <span class="title function_">get_length</span>(<span class="params">tr</span>):</span><br><span class="line">    <span class="keyword">return</span> <span class="built_in">len</span>(tr.content)</span><br><span class="line"></span><br><span class="line">ranked = <span class="built_in">sorted</span>(remaining, key=get_length)</span><br></pre></td></tr></table></figure>
+
+<p>关于 <code>sorted</code> 本身，两点值得记：</p>
+<ul>
+<li><strong><code>key</code> 对每个元素只算一次</strong>，不是每次比较都算。所以把耗时的事放进 <code>key</code> 函数，代价是 <code>n</code> 次，不是 <code>n log n</code> 次。</li>
+<li><strong><code>sorted()</code> 返回新列表，<code>list.sort()</code> 原地改。</strong></li>
+</ul>
+<h3 id="最重要的一条限制：lambda-只能是一个表达式"><a href="#最重要的一条限制：lambda-只能是一个表达式" class="headerlink" title="最重要的一条限制：lambda 只能是一个表达式"></a>最重要的一条限制：<code>lambda</code> 只能是一个表达式</h3><figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">lambda</span> 参数: 表达式</span><br></pre></td></tr></table></figure>
+
+<p>没有 <code>&#123;&#125;</code> 代码块，不能写语句，不能有 <code>return</code>（表达式的结果就是返回值），也不能加类型标注。所以它只够用在”给高阶函数塞一个一次性参数”这一种场合：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="built_in">sorted</span>(items, key=<span class="keyword">lambda</span> x: x.score)</span><br><span class="line"><span class="built_in">max</span>(items, key=<span class="keyword">lambda</span> x: <span class="built_in">len</span>(x.name))</span><br></pre></td></tr></table></figure>
+
+<p>需要中间变量、需要循环、需要提前返回的，老实写 <code>def</code>：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">def</span> <span class="title function_">first_line</span>(<span class="params">tr</span>):</span><br><span class="line">    <span class="keyword">for</span> line <span class="keyword">in</span> tr.content.splitlines():</span><br><span class="line">        <span class="keyword">if</span> line.strip():</span><br><span class="line">            <span class="keyword">return</span> line.strip()</span><br><span class="line">    <span class="keyword">return</span> <span class="string">&quot;&quot;</span></span><br><span class="line"></span><br><span class="line">ranked = <span class="built_in">sorted</span>(remaining, key=first_line)</span><br></pre></td></tr></table></figure>
+
+<p>把 <code>first_line</code> 这种逻辑硬塞进 <code>lambda</code> 是不可能的——它要一个循环加一个提前返回，都是语句。<strong>判断标准很简单：一个表达式写得下就用 <code>lambda</code>，写不下就 <code>def</code>。</strong></p>
+<h2 id="5-tuple：有序、不可变"><a href="#5-tuple：有序、不可变" class="headerlink" title="5. tuple：有序、不可变"></a>5. <code>tuple</code>：有序、不可变</h2><p>Tuple（元组）是 Python 中一种有序、不可变的数据结构。</p>
+<table>
+<thead>
+<tr>
+<th>特点</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>有序</td>
+<td>元素有固定顺序，可以通过索引访问</td>
+</tr>
+<tr>
+<td>不可变</td>
+<td>创建后不能修改、添加或删除元素</td>
+</tr>
+<tr>
+<td>可包含任意类型</td>
+<td>数字、字符串、列表、甚至另一个元组都可以</td>
+</tr>
+<tr>
+<td>用圆括号定义</td>
+<td>也可以不加括号（<strong>逗号才是关键</strong>）</td>
+</tr>
+</tbody></table>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line">t1 = (<span class="number">1</span>, <span class="number">2</span>, <span class="number">3</span>)</span><br><span class="line">t2 = <span class="string">&quot;a&quot;</span>, <span class="string">&quot;b&quot;</span>, <span class="string">&quot;c&quot;</span>     <span class="comment"># 不加括号也可以</span></span><br><span class="line">t3 = (<span class="number">1</span>,)              <span class="comment"># 只有一个元素时，逗号不能省</span></span><br><span class="line">t4 = ()                <span class="comment"># 空元组</span></span><br><span class="line"></span><br><span class="line"><span class="built_in">print</span>(t1[<span class="number">0</span>])           <span class="comment"># 1</span></span><br><span class="line"><span class="built_in">print</span>(t1[-<span class="number">1</span>])          <span class="comment"># 3</span></span><br></pre></td></tr></table></figure>
+
+<p>解包很常用：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">name, age, city = (<span class="string">&quot;张三&quot;</span>, <span class="number">25</span>, <span class="string">&quot;北京&quot;</span>)</span><br></pre></td></tr></table></figure>
+
+<p>“不可变”听着像个限制，但它换来两件实际有用的东西。</p>
+<p><strong>一、能当字典的 key。</strong> 一个坐标点可以直接拿去查表：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">cache = &#123;&#125;</span><br><span class="line">cache[(<span class="number">12.5</span>, <span class="number">30.1</span>)] = <span class="string">&quot;某条记录&quot;</span></span><br></pre></td></tr></table></figure>
+
+<p>换成列表当 key，直接 <code>TypeError: unhashable type: &#39;list&#39;</code>。原因就是元组不会变，哈希值稳定——<strong>不可变不是随便加的约束</strong>，它是”能当 key”这个能力的前提。</p>
+<p><strong>二、多返回值其实就是元组。</strong> Python 的 <code>return a, b</code> 返回的是一个元组，所以可以原地拆开：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">def</span> <span class="title function_">min_max</span>(<span class="params">nums</span>):</span><br><span class="line">    <span class="keyword">return</span> <span class="built_in">min</span>(nums), <span class="built_in">max</span>(nums)</span><br><span class="line"></span><br><span class="line">low, high = min_max([<span class="number">3</span>, <span class="number">1</span>, <span class="number">2</span>])</span><br></pre></td></tr></table></figure>
+
+<h2 id="6-yield：算一个、交一个，下次接着算"><a href="#6-yield：算一个、交一个，下次接着算" class="headerlink" title="6. yield：算一个、交一个，下次接着算"></a>6. <code>yield</code>：算一个、交一个，下次接着算</h2><p><code>yield</code> 是 Python 里用来创建**生成器（generator）**的关键字。</p>
+<p>普通函数用 <code>return</code> 会立刻结束并返回结果。用了 <code>yield</code> 的函数会变成生成器函数，<strong>调用它不会立刻执行完，而是返回一个生成器对象</strong>。每次用 <code>next()</code> 或 <code>for</code> 循环去取下一个值时，函数才会从上次暂停的地方继续执行，直到再次遇到 <code>yield</code>。</p>
+<p>所以 <code>yield</code> 和 <code>return</code> 的分工是：</p>
+<ul>
+<li><strong><code>return</code></strong>：一次把结果全算完，交出去，函数结束</li>
+<li><strong><code>yield</code></strong>：交出一个值，<strong>函数在这里暂停</strong>；下次再来要，从暂停的地方接着往下跑</li>
+</ul>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">def</span> <span class="title function_">count_up_to</span>(<span class="params">n</span>):</span><br><span class="line">    i = <span class="number">1</span></span><br><span class="line">    <span class="keyword">while</span> i &lt;= n:</span><br><span class="line">        <span class="keyword">yield</span> i          <span class="comment"># 交出 i，然后停在这里</span></span><br><span class="line">        i += <span class="number">1</span></span><br><span class="line"></span><br><span class="line">gen = count_up_to(<span class="number">3</span>)</span><br><span class="line"></span><br><span class="line"><span class="built_in">next</span>(gen)    <span class="comment"># 1</span></span><br><span class="line"><span class="built_in">next</span>(gen)    <span class="comment"># 2</span></span><br><span class="line"><span class="built_in">next</span>(gen)    <span class="comment"># 3</span></span><br><span class="line"><span class="built_in">next</span>(gen)    <span class="comment"># StopIteration：取完了</span></span><br></pre></td></tr></table></figure>
+
+<p>把四次取值拆开看，就是函数在”跑 → 停 → 接着跑”之间来回：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">next(gen) 第 1 次  -&gt;  跑到 yield i，交出 1，暂停在这里</span><br><span class="line">next(gen) 第 2 次  -&gt;  从暂停处继续：i += 1，再跑到 yield i，交出 2，暂停</span><br><span class="line">next(gen) 第 3 次  -&gt;  继续：i += 1，交出 3，暂停</span><br><span class="line">next(gen) 第 4 次  -&gt;  循环条件不成立，函数走到结尾 -&gt; 抛 StopIteration</span><br></pre></td></tr></table></figure>
+
+<p>平时一般不会手写 <code>next()</code>，直接 <code>for</code> 就行——<code>for</code> 会自动一次次取，取到 <code>StopIteration</code> 就结束，这个异常在循环里根本看不见：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">for</span> num <span class="keyword">in</span> count_up_to(<span class="number">3</span>):</span><br><span class="line">    <span class="built_in">print</span>(num)       <span class="comment"># 1 2 3</span></span><br></pre></td></tr></table></figure>
+
+<h3 id="为什么要用它：不把数据一次性装进内存"><a href="#为什么要用它：不把数据一次性装进内存" class="headerlink" title="为什么要用它：不把数据一次性装进内存"></a>为什么要用它：不把数据一次性装进内存</h3><p>这是 <code>yield</code> 最实在的理由。读一个几百万行的日志：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">def</span> <span class="title function_">read_lines</span>(<span class="params">path</span>):</span><br><span class="line">    <span class="keyword">with</span> <span class="built_in">open</span>(path) <span class="keyword">as</span> f:</span><br><span class="line">        <span class="keyword">for</span> line <span class="keyword">in</span> f:</span><br><span class="line">            <span class="keyword">yield</span> line.strip()      <span class="comment"># 一次只在内存里放一行</span></span><br><span class="line"></span><br><span class="line"><span class="keyword">for</span> line <span class="keyword">in</span> read_lines(<span class="string">&quot;huge.log&quot;</span>):</span><br><span class="line">    ...</span><br></pre></td></tr></table></figure>
+
+<p>换成返回列表，写法只差一点，内存差很多：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">def</span> <span class="title function_">read_lines</span>(<span class="params">path</span>):</span><br><span class="line">    <span class="keyword">with</span> <span class="built_in">open</span>(path) <span class="keyword">as</span> f:</span><br><span class="line">        <span class="keyword">return</span> [line.strip() <span class="keyword">for</span> line <span class="keyword">in</span> f]     <span class="comment"># 一调用，整个文件全进内存</span></span><br></pre></td></tr></table></figure>
+
+<p>用 <code>yield</code> 的版本，处理到第 500 万行时，内存里只有那一行。这就是**”边走边给”和”先攒齐再给”**的区别。</p>
+<p>判断标准：<strong>这份结果你是打算遍历一遍就扔，还是后面要反复用？</strong> 遍历一遍就扔，用 <code>yield</code>；要反复用、要取长度、要按下标访问，那就返回列表。</p>
+<h3 id="两个要记住的点"><a href="#两个要记住的点" class="headerlink" title="两个要记住的点"></a>两个要记住的点</h3><ul>
+<li><strong>生成器只能遍历一次。</strong> 取完就空了，再 <code>for</code> 什么都不出来；要重新调一次函数，拿一个新的生成器。</li>
+<li><strong><code>yield from</code> 用来把另一个可迭代对象逐个交出去</strong>，等于省掉一层 <code>for</code>：</li>
+</ul>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">def</span> <span class="title function_">all_lines</span>(<span class="params">*paths</span>):</span><br><span class="line">    <span class="keyword">for</span> path <span class="keyword">in</span> paths:</span><br><span class="line">        <span class="keyword">yield</span> <span class="keyword">from</span> read_lines(path)</span><br><span class="line"></span><br><span class="line"><span class="comment"># 等价于：</span></span><br><span class="line"><span class="comment">#     for line in read_lines(path):</span></span><br><span class="line"><span class="comment">#         yield line</span></span><br></pre></td></tr></table></figure>
+
+<h2 id="7-try-except"><a href="#7-try-except" class="headerlink" title="7. try / except"></a>7. <code>try / except</code></h2><p>这是 Python 的异常处理语法，用来捕获和处理代码运行时可能出现的错误，<strong>防止程序直接崩溃</strong>。</p>
+<p>基本结构：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">try</span>:</span><br><span class="line">    <span class="comment"># 可能出错的代码</span></span><br><span class="line">    ...</span><br><span class="line"><span class="keyword">except</span> 错误类型:</span><br><span class="line">    <span class="comment"># 如果出错了，执行这里</span></span><br><span class="line">    ...</span><br></pre></td></tr></table></figure>
+
+<p>最简单的例子：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">try</span>:</span><br><span class="line">    num = <span class="built_in">int</span>(<span class="string">&quot;abc&quot;</span>)       <span class="comment"># 这里会报错，因为 &quot;abc&quot; 不能转成数字</span></span><br><span class="line">    <span class="built_in">print</span>(num)</span><br><span class="line"><span class="keyword">except</span> ValueError:</span><br><span class="line">    <span class="built_in">print</span>(<span class="string">&quot;转换失败，请输入数字&quot;</span>)</span><br></pre></td></tr></table></figure>
+
+<p>输出：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">转换失败，请输入数字</span><br></pre></td></tr></table></figure>
+
+<p>如果没有 <code>try / except</code>，程序会直接报错崩溃。</p>
+<h3 id="完整写法"><a href="#完整写法" class="headerlink" title="完整写法"></a>完整写法</h3><figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">try</span>:</span><br><span class="line">    result = <span class="number">10</span> / <span class="number">0</span></span><br><span class="line"><span class="keyword">except</span> ZeroDivisionError <span class="keyword">as</span> e:</span><br><span class="line">    <span class="built_in">print</span>(<span class="string">f&quot;出错了：<span class="subst">&#123;e&#125;</span>&quot;</span>)</span><br><span class="line"><span class="keyword">else</span>:</span><br><span class="line">    <span class="built_in">print</span>(<span class="string">&quot;没有出错&quot;</span>)</span><br><span class="line"><span class="keyword">finally</span>:</span><br><span class="line">    <span class="built_in">print</span>(<span class="string">&quot;无论是否出错都会执行&quot;</span>)</span><br></pre></td></tr></table></figure>
+
+<table>
+<thead>
+<tr>
+<th>子句</th>
+<th>什么时候执行</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>except</code></td>
+<td>出了对应的错才执行</td>
+</tr>
+<tr>
+<td><code>else</code></td>
+<td>没出错才执行，用得少</td>
+</tr>
+<tr>
+<td><code>finally</code></td>
+<td>无论有没有出错都执行，用来收尾</td>
+</tr>
+</tbody></table>
+<p><code>except</code> 后面可以接具体类型，也可以接一个元组：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">try</span>:</span><br><span class="line">    ...</span><br><span class="line"><span class="keyword">except</span> (ValueError, TypeError) <span class="keyword">as</span> e:</span><br><span class="line">    ...</span><br></pre></td></tr></table></figure>
+
+<p><code>except Exception as e</code> 是最宽的那档”能捕获的都捕获”。注意它接的不是 <code>BaseException</code>，所以 <code>KeyboardInterrupt</code>（Ctrl+C）和 <code>SystemExit</code> 不会被吞掉——这是故意的。<strong>别写裸的 <code>except:</code></strong>，它连 Ctrl+C 都拦。</p>
+<p><code>raise</code> 不带参数就是原样重抛当前这个异常：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">try</span>:</span><br><span class="line">    ...</span><br><span class="line"><span class="keyword">except</span> ValueError:</span><br><span class="line">    log.warning(<span class="string">&quot;参数不对&quot;</span>)</span><br><span class="line">    <span class="keyword">raise</span>              <span class="comment"># 记完日志再抛出去，交给上层处理</span></span><br></pre></td></tr></table></figure>
+
+<p>还有一条和前几节一脉相承的规则：<strong>能 <code>raise</code> 的只有异常对象</strong>，必须是 <code>BaseException</code> 的子类实例，<code>raise &quot;字符串&quot;</code> 这种写法不合法。</p>
+<h2 id="8-with-as-：进入时拿资源，离开时自动还"><a href="#8-with-as-：进入时拿资源，离开时自动还" class="headerlink" title="8. with ... as ...：进入时拿资源，离开时自动还"></a>8. <code>with ... as ...</code>：进入时拿资源，离开时自动还</h2><p><code>with ... as ...</code> 是 Python 的上下文管理器语法，主要用于：<strong>在进入代码块时自动获取资源，在离开代码块时自动释放资源。</strong></p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">with</span> httpx.Client(timeout=<span class="number">30.0</span>) <span class="keyword">as</span> client:</span><br><span class="line">    response = client.post(url, headers=headers, json=payload)</span><br></pre></td></tr></table></figure>
+
+<p>这一行拆成三部分：</p>
+<table>
+<thead>
+<tr>
+<th>部分</th>
+<th>含义</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>httpx.Client(timeout=30.0)</code></td>
+<td>创建一个 HTTP 客户端，并设置默认超时时间为 30 秒</td>
+</tr>
+<tr>
+<td><code>as client</code></td>
+<td>把这个客户端对象绑定到变量名 <code>client</code></td>
+</tr>
+<tr>
+<td><code>with</code></td>
+<td>进入一个受管理的代码块。<strong>代码块结束后，Python 会自动关闭客户端</strong>，即使中间发生异常，也会尽量完成清理</td>
+</tr>
+</tbody></table>
+<p>所以它大致相当于”创建 + 记得关闭”两件事合起来写，好处是<strong>你不容易忘记写 <code>close()</code></strong>。</p>
+<h3 id="为什么-HTTP-客户端需要关闭"><a href="#为什么-HTTP-客户端需要关闭" class="headerlink" title="为什么 HTTP 客户端需要关闭"></a>为什么 HTTP 客户端需要关闭</h3><p><code>httpx.Client</code> 内部可能管理：</p>
+<ul>
+<li>TCP 连接</li>
+<li>HTTPS 连接</li>
+<li>连接池</li>
+<li>Socket</li>
+<li>系统文件描述符</li>
+</ul>
+<p>如果创建了客户端却一直不关闭，可能导致资源泄漏——短期看不出来，跑久了是句柄耗尽或者连接堆积。用 <code>with</code> 的话，代码块结束时等同于自动调用：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">client.close()</span><br></pre></td></tr></table></figure>
+
+<h3 id="return-也不会跳过清理"><a href="#return-也不会跳过清理" class="headerlink" title="return 也不会跳过清理"></a><code>return</code> 也不会跳过清理</h3><p>这里有一个很重要的点：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">with</span> httpx.Client(timeout=<span class="number">30.0</span>) <span class="keyword">as</span> client:</span><br><span class="line">    response = client.post(<span class="string">f&quot;<span class="subst">&#123;self.base_url&#125;</span>/web-search&quot;</span>, headers=headers, json=payload)</span><br><span class="line"></span><br><span class="line">    <span class="keyword">if</span> response.status_code == <span class="number">200</span>:</span><br><span class="line">        <span class="keyword">return</span> <span class="variable language_">self</span>._format_result(response.json(), query)</span><br><span class="line"></span><br><span class="line">    <span class="keyword">return</span> &#123;<span class="string">&quot;success&quot;</span>: <span class="literal">False</span>, <span class="string">&quot;error&quot;</span>: <span class="string">f&quot;API请求失败: <span class="subst">&#123;response.status_code&#125;</span>&quot;</span>&#125;</span><br></pre></td></tr></table></figure>
+
+<p>上面有两条 <code>return</code> 路径，两条都一样：<strong>即使代码块中执行了 <code>return</code>，客户端也会先关闭，然后函数才真正返回。</strong></p>
+<p>清理的执行时机是”控制流离开这个块”，<code>return</code> 只是离开的一种方式，绕不过去。</p>
+<h3 id="自己写一个：-contextmanager-yield"><a href="#自己写一个：-contextmanager-yield" class="headerlink" title="自己写一个：@contextmanager + yield"></a>自己写一个：<code>@contextmanager</code> + <code>yield</code></h3><p>如果前面 <code>yield</code> 那节看懂了，这里正好接上——写一个上下文管理器最简单的方式就是用生成器：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">import</span> time</span><br><span class="line"><span class="keyword">from</span> contextlib <span class="keyword">import</span> contextmanager</span><br><span class="line"></span><br><span class="line"><span class="meta">@contextmanager</span></span><br><span class="line"><span class="keyword">def</span> <span class="title function_">timer</span>(<span class="params">label</span>):</span><br><span class="line">    start = time.perf_counter()</span><br><span class="line">    <span class="keyword">try</span>:</span><br><span class="line">        <span class="keyword">yield</span>                        <span class="comment"># 这里面的部分，就是 with 块</span></span><br><span class="line">    <span class="keyword">finally</span>:</span><br><span class="line">        <span class="built_in">print</span>(<span class="string">f&quot;<span class="subst">&#123;label&#125;</span>: <span class="subst">&#123;time.perf_counter() - start:<span class="number">.3</span>f&#125;</span>s&quot;</span>)</span><br><span class="line"></span><br><span class="line"><span class="keyword">with</span> timer(<span class="string">&quot;请求&quot;</span>):</span><br><span class="line">    response = client.post(url)</span><br></pre></td></tr></table></figure>
+
+<p><strong><code>yield</code> 之前的代码是”进入时”，<code>yield</code> 之后的代码是”离开时”。</strong> 外面包 <code>try / finally</code> 是为了块里抛异常时也能走到打印那句。</p>
+<p>两个坑：</p>
+<ul>
+<li><strong>手写类的时候，<code>__exit__</code> 返回真值会把异常吞掉。</strong> <code>with</code> 块里抛出的异常会静默消失，排错时非常难受。<code>@contextmanager</code> 装饰出来的版本不会这样（除非你自己用 <code>except</code> 把它接住），所以能用装饰器就别手写类。</li>
+<li><strong>多个资源从前往后依次进入、从后往前依次退出。</strong> 所以下面这种写法里 <code>fout</code> 先关、<code>fin</code> 后关，比嵌套两层 <code>with</code> 干净：</li>
+</ul>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">with</span> <span class="built_in">open</span>(<span class="string">&quot;in.txt&quot;</span>) <span class="keyword">as</span> fin, <span class="built_in">open</span>(<span class="string">&quot;out.txt&quot;</span>, <span class="string">&quot;w&quot;</span>) <span class="keyword">as</span> fout:</span><br><span class="line">    fout.write(fin.read())</span><br></pre></td></tr></table></figure>
+
+<h2 id="9-类型标注：list-str-、dict-str-Any-、type-X"><a href="#9-类型标注：list-str-、dict-str-Any-、type-X" class="headerlink" title="9. 类型标注：list[str]、dict[str, Any]、type[X]"></a>9. 类型标注：<code>list[str]</code>、<code>dict[str, Any]</code>、<code>type[X]</code></h2><figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">names: <span class="built_in">list</span>[<span class="built_in">str</span>] = [<span class="string">&quot;张三&quot;</span>, <span class="string">&quot;李四&quot;</span>]</span><br><span class="line">scores: <span class="built_in">list</span>[<span class="built_in">int</span>] = [<span class="number">90</span>, <span class="number">85</span>, <span class="number">100</span>]</span><br></pre></td></tr></table></figure>
+
+<p>意思是：<code>names</code> 是一个列表，列表里的元素应该是字符串 <code>str</code>。</p>
+<p>冒号后面是标注，等号后面才是值。<strong>标注不影响运行</strong>——Python 不会因为你标了 <code>list[str]</code> 就往里做检查，它只给 IDE 和 mypy 这类静态检查器看。</p>
+<p><code>list[str]</code> 这种小写泛型要 Python 3.9+（PEP 585）。老代码里写成 <code>List[str]</code>，那是从 <code>typing</code> import 的，现在没必要了。</p>
+<p>最常用的其实是嵌套的字典列表，AI &#x2F; Agent 代码里到处都是：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">from</span> typing <span class="keyword">import</span> <span class="type">Any</span></span><br><span class="line"></span><br><span class="line">messages: <span class="built_in">list</span>[<span class="built_in">dict</span>[<span class="built_in">str</span>, <span class="type">Any</span>]] = []</span><br><span class="line"></span><br><span class="line">messages.append(&#123;</span><br><span class="line">    <span class="string">&quot;role&quot;</span>: <span class="string">&quot;user&quot;</span>,</span><br><span class="line">    <span class="string">&quot;content&quot;</span>: <span class="string">&quot;你好&quot;</span>,</span><br><span class="line">    <span class="string">&quot;tokens&quot;</span>: <span class="number">5</span>,</span><br><span class="line">&#125;)</span><br><span class="line"></span><br><span class="line">history: <span class="built_in">list</span>[<span class="built_in">dict</span>[<span class="built_in">str</span>, <span class="type">Any</span>]] = []        <span class="comment"># 对话历史</span></span><br><span class="line">tool_results: <span class="built_in">list</span>[<span class="built_in">dict</span>[<span class="built_in">str</span>, <span class="type">Any</span>]] = []   <span class="comment"># 工具调用结果</span></span><br><span class="line">events: <span class="built_in">list</span>[<span class="built_in">dict</span>[<span class="built_in">str</span>, <span class="type">Any</span>]] = []         <span class="comment"># 事件流</span></span><br></pre></td></tr></table></figure>
+
+<p><code>dict[str, Any]</code> 读作”键是字符串、值是任何类型”。<code>Any</code> 表示 value 可以是任何类型，比较宽松；想更严格就把 <code>Any</code> 换成具体类型，比如 <code>dict[str, int]</code>。</p>
+<p>列表里放对象也一样，写类名就行：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">class</span> <span class="title class_">User</span>:</span><br><span class="line">    <span class="keyword">def</span> <span class="title function_">__init__</span>(<span class="params">self, name: <span class="built_in">str</span>, age: <span class="built_in">int</span></span>):</span><br><span class="line">        <span class="variable language_">self</span>.name = name</span><br><span class="line">        <span class="variable language_">self</span>.age = age</span><br><span class="line"></span><br><span class="line">users: <span class="built_in">list</span>[User] = [User(<span class="string">&quot;张三&quot;</span>, <span class="number">18</span>), User(<span class="string">&quot;李四&quot;</span>, <span class="number">20</span>)]</span><br><span class="line"></span><br><span class="line"><span class="keyword">for</span> user <span class="keyword">in</span> users:</span><br><span class="line">    <span class="built_in">print</span>(user.name, user.age)</span><br></pre></td></tr></table></figure>
+
+<p>这里 <code>list[User]</code> 表示：<code>users</code> 是一个列表，列表中的每个元素都应该是 <code>User</code> 类型的对象。</p>
+<h3 id="type-X-：传的是类，不是实例"><a href="#type-X-：传的是类，不是实例" class="headerlink" title="type[X]：传的是类，不是实例"></a><code>type[X]</code>：传的是类，不是实例</h3><p>有一个标注容易读反：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">def</span> <span class="title function_">make_new_user</span>(<span class="params">user_class: <span class="built_in">type</span>[User]</span>) -&gt; User:</span><br><span class="line">    <span class="keyword">return</span> user_class()        <span class="comment"># 调用类本身来创建实例</span></span><br></pre></td></tr></table></figure>
+
+<p><code>type[X]</code> 表示的是”<strong>X 的类对象本身</strong>“，也就是 X 这个类，或者它的子类。<strong>它不是表示”X 的实例”，而是表示”能创建 X 实例的那个类”。</strong></p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">make_new_user(User)       <span class="comment"># ✅ 传的是类</span></span><br><span class="line">make_new_user(ProUser)    <span class="comment"># ✅ 子类也可以，type[X] 是协变的</span></span><br><span class="line">make_new_user(User())     <span class="comment"># ❌ 传的是实例，不是类</span></span><br><span class="line">make_new_user(<span class="built_in">int</span>)        <span class="comment"># ❌ int 不是 User 的子类</span></span><br></pre></td></tr></table></figure>
+
+<h2 id="10-dataclass：让类型标注替你写-init"><a href="#10-dataclass：让类型标注替你写-init" class="headerlink" title="10. @dataclass：让类型标注替你写 __init__"></a>10. <code>@dataclass</code>：让类型标注替你写 <code>__init__</code></h2><p><code>@dataclass</code> 是 Python 标准库 <code>dataclasses</code> 模块提供的装饰器（Python 3.7+ 内置）。它的作用是：<strong>自动帮你生成一堆常用方法，让你不用手写大量样板代码。</strong></p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">from</span> dataclasses <span class="keyword">import</span> dataclass</span><br><span class="line"></span><br><span class="line"><span class="meta">@dataclass</span></span><br><span class="line"><span class="keyword">class</span> <span class="title class_">StreamEnd</span>:</span><br><span class="line">    stop_reason: <span class="built_in">str</span></span><br><span class="line">    input_tokens: <span class="built_in">int</span> = <span class="number">0</span></span><br><span class="line">    output_tokens: <span class="built_in">int</span> = <span class="number">0</span></span><br><span class="line">    cache_read: <span class="built_in">int</span> = <span class="number">0</span></span><br><span class="line">    cache_creation: <span class="built_in">int</span> = <span class="number">0</span></span><br></pre></td></tr></table></figure>
+
+<p>加上 <code>@dataclass</code> 之后，上面这段会自动长出：</p>
+<ul>
+<li><code>__init__</code> —— 构造函数。字段声明顺序就是参数顺序，带默认值的必须排在后面</li>
+<li><code>__repr__</code> —— 打印出来是 <code>StreamEnd(stop_reason=&#39;end_turn&#39;, input_tokens=12, ...)</code>，不再是 <code>&lt;object at 0x7f...&gt;</code></li>
+<li><code>__eq__</code> —— 按字段逐个比，<code>==</code> 能直接用</li>
+<li><code>__hash__</code> —— <code>frozen=True</code> 时才生成</li>
+</ul>
+<p>等价于自己手写：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">class</span> <span class="title class_">StreamEnd</span>:</span><br><span class="line">    <span class="keyword">def</span> <span class="title function_">__init__</span>(<span class="params">self, stop_reason, input_tokens=<span class="number">0</span>, output_tokens=<span class="number">0</span>,</span></span><br><span class="line"><span class="params">                 cache_read=<span class="number">0</span>, cache_creation=<span class="number">0</span></span>):</span><br><span class="line">        <span class="variable language_">self</span>.stop_reason = stop_reason</span><br><span class="line">        <span class="variable language_">self</span>.input_tokens = input_tokens</span><br><span class="line">        <span class="variable language_">self</span>.output_tokens = output_tokens</span><br><span class="line">        <span class="variable language_">self</span>.cache_read = cache_read</span><br><span class="line">        <span class="variable language_">self</span>.cache_creation = cache_creation</span><br><span class="line"></span><br><span class="line">    <span class="keyword">def</span> <span class="title function_">__repr__</span>(<span class="params">self</span>):</span><br><span class="line">        <span class="keyword">return</span> (<span class="string">f&quot;StreamEnd(stop_reason=<span class="subst">&#123;self.stop_reason!r&#125;</span>, &quot;</span></span><br><span class="line">                <span class="string">f&quot;input_tokens=<span class="subst">&#123;self.input_tokens!r&#125;</span>, ...)&quot;</span>)</span><br><span class="line"></span><br><span class="line">    <span class="keyword">def</span> <span class="title function_">__eq__</span>(<span class="params">self, other</span>):</span><br><span class="line">        ...</span><br></pre></td></tr></table></figure>
+
+<p><strong>一个必须知道的坑：可变类型不能直接当默认值。</strong></p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">from</span> dataclasses <span class="keyword">import</span> dataclass, field</span><br><span class="line"></span><br><span class="line"><span class="meta">@dataclass</span></span><br><span class="line"><span class="keyword">class</span> <span class="title class_">Bad</span>:</span><br><span class="line">    items: <span class="built_in">list</span> = []                            <span class="comment"># ❌ 直接报错</span></span><br><span class="line"></span><br><span class="line"><span class="meta">@dataclass</span></span><br><span class="line"><span class="keyword">class</span> <span class="title class_">Good</span>:</span><br><span class="line">    items: <span class="built_in">list</span> = field(default_factory=<span class="built_in">list</span>)   <span class="comment"># ✅ 每个实例各建一个新列表</span></span><br></pre></td></tr></table></figure>
+
+<p>原因和 Python 默认参数那个经典坑是同一个：默认值在定义时求值一次，所有实例会<strong>共享同一个列表</strong>，改一个全都变。<code>default_factory</code> 是让”每次新建实例时调一次这个函数”。</p>
+<h2 id="11-Literal-比-Enum-轻在哪"><a href="#11-Literal-比-Enum-轻在哪" class="headerlink" title="11. Literal 比 Enum 轻在哪"></a>11. <code>Literal</code> 比 <code>Enum</code> 轻在哪</h2><p>要表达”这个字段只能取三个值之一”，传统写法是用 <code>Enum</code>：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">from</span> enum <span class="keyword">import</span> Enum</span><br><span class="line"></span><br><span class="line"><span class="keyword">class</span> <span class="title class_">ToolCategory</span>(<span class="title class_ inherited__">Enum</span>):</span><br><span class="line">    READ = <span class="string">&quot;read&quot;</span></span><br><span class="line">    WRITE = <span class="string">&quot;write&quot;</span></span><br><span class="line">    COMMAND = <span class="string">&quot;command&quot;</span></span><br><span class="line"></span><br><span class="line">category = ToolCategory.READ</span><br><span class="line">category.value        <span class="comment"># &quot;read&quot; —— 还得再取一层</span></span><br></pre></td></tr></table></figure>
+
+<p>缺点：</p>
+<ul>
+<li>必须额外定义一个类</li>
+<li>运行时是 <code>Enum</code> 对象，不是普通字符串</li>
+<li>序列化成 JSON 时比较麻烦（需要自己处理 <code>.value</code>，否则 <code>json.dumps</code> 抛 <code>TypeError</code>）</li>
+<li>代码稍微啰嗦一点</li>
+</ul>
+<p>现在更推荐用 <code>Literal</code>：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">from</span> typing <span class="keyword">import</span> <span class="type">Literal</span></span><br><span class="line"></span><br><span class="line">ToolCategory = <span class="type">Literal</span>[<span class="string">&quot;read&quot;</span>, <span class="string">&quot;write&quot;</span>, <span class="string">&quot;command&quot;</span>]</span><br><span class="line"></span><br><span class="line">category: ToolCategory = <span class="string">&quot;read&quot;</span>     <span class="comment"># ✅ 合法</span></span><br><span class="line">category = <span class="string">&quot;write&quot;</span>                  <span class="comment"># ✅ 合法</span></span><br><span class="line">category = <span class="string">&quot;delete&quot;</span>                 <span class="comment"># ❌ 类型检查器直接报错，IDE 里会标红</span></span><br></pre></td></tr></table></figure>
+
+<p>优点：</p>
+<table>
+<thead>
+<tr>
+<th>优点</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>更轻量</td>
+<td>不需要单独定义一个类</td>
+</tr>
+<tr>
+<td>运行时就是普通字符串</td>
+<td><code>category</code> 的值直接是 <code>&quot;read&quot;</code>，不是对象</td>
+</tr>
+<tr>
+<td>序列化零成本</td>
+<td>直接能转 JSON，不用额外处理</td>
+</tr>
+<tr>
+<td>类型检查依然有效</td>
+<td>静态检查器能拦住非法值</td>
+</tr>
+<tr>
+<td>IDE 提示好</td>
+<td>自动补全只会出现 <code>&quot;read&quot;</code> &#x2F; <code>&quot;write&quot;</code> &#x2F; <code>&quot;command&quot;</code></td>
+</tr>
+</tbody></table>
+<p><strong>代价也要说清楚：<code>Literal</code> 只给类型检查器看，运行时不做任何校验。</strong> 从 JSON 里读进来一个字符串，标了 <code>Literal</code> 也拦不住非法值——要运行时校验还得自己写判断，或者用 <code>Enum</code> &#x2F; pydantic。它管的是”写代码时 IDE 会拦”，不管”跑起来时数据是脏的”。</p>
+<h2 id="12-小结"><a href="#12-小结" class="headerlink" title="12. 小结"></a>12. 小结</h2><p>真正要记住的只有三件事：</p>
+<p><strong>一、判断和推导都是”先说结果、后说条件”。</strong> <code>A if 条件 else B</code>、<code>[对每个元素做什么 for 元素 in 集合 if 条件]</code>，条件和过滤都放在后面。</p>
+<p><strong>二、空容器是假值。</strong> <code>0</code>、<code>&quot;&quot;</code>、<code>[]</code>、<code>&#123;&#125;</code>、<code>()</code> 全都算假，所以 <code>or</code> 当默认值用会把它们一起兜掉。0 是有效值的时候，只能写显式判断。</p>
+<p><strong>三、类型标注不参与运行。</strong> <code>list[str]</code>、<code>type[X]</code>、<code>Literal</code> 管的是写代码时的提示和补全，管不了运行时的数据。</p>
+<h2 id="参考"><a href="#参考" class="headerlink" title="参考"></a>参考</h2><ul>
+<li>内置类型 &#x2F; 真值测试：<a target="_blank" rel="noopener" href="https://docs.python.org/zh-cn/3/library/stdtypes.html#truth-value-testing">https://docs.python.org/zh-cn/3/library/stdtypes.html#truth-value-testing</a></li>
+<li><code>dataclasses</code>：<a target="_blank" rel="noopener" href="https://docs.python.org/zh-cn/3/library/dataclasses.html">https://docs.python.org/zh-cn/3/library/dataclasses.html</a></li>
+<li><code>typing</code>（<code>Any</code> &#x2F; <code>Literal</code>）：<a target="_blank" rel="noopener" href="https://docs.python.org/zh-cn/3/library/typing.html">https://docs.python.org/zh-cn/3/library/typing.html</a></li>
+<li>PEP 585（<code>list[str]</code> 这种内置泛型）：<a target="_blank" rel="noopener" href="https://peps.python.org/pep-0585/">https://peps.python.org/pep-0585/</a></li>
+</ul>
+</div><div class="article-licensing box"><div class="licensing-title"><p>python基本语法</p><p><a href="https://wywzixin.github.io/python/basic-syntax/">https://wywzixin.github.io/python/basic-syntax/</a></p></div><div class="licensing-meta level is-mobile"><div class="level-left"><div class="level-item is-narrow"><div><h6>作者</h6><p>wangyawei</p></div></div><div class="level-item is-narrow"><div><h6>发布于</h6><p>2026-09-14</p></div></div><div class="level-item is-narrow"><div><h6>更新于</h6><p>2026-09-14</p></div></div><div class="level-item is-narrow"><div><h6>许可协议</h6><p><a class="icons" rel="noopener" target="_blank" title="Creative Commons" href="https://creativecommons.org/"><i class="icon fab fa-creative-commons"></i></a><a class="icons" rel="noopener" target="_blank" title="Attribution" href="https://creativecommons.org/licenses/by/4.0/"><i class="icon fab fa-creative-commons-by"></i></a><a class="icons" rel="noopener" target="_blank" title="Noncommercial" href="https://creativecommons.org/licenses/by-nc/4.0/"><i class="icon fab fa-creative-commons-nc"></i></a></p></div></div></div></div></div><div class="article-tags is-size-7 mb-4"><span class="mr-2">#</span><a class="link-muted mr-2" rel="tag" href="/tags/python/">python</a></div><!--!--></article></div><!--!--><nav class="post-navigation mt-4 level is-mobile"><div class="level-start"><a class="article-nav-prev level level-item link-muted" href="/2026/09/14/threejs%E5%AE%9E%E4%BE%8B%E5%8C%96%E6%B8%B2%E6%9F%93InstancedMesh/"><i class="level-item fas fa-chevron-left"></i><span class="level-item">Three.js InstancedMesh 实例化渲染</span></a></div><div class="level-end"><a class="article-nav-next level level-item link-muted" href="/python/asyncio/"><span class="level-item">python异步编程</span><i class="level-item fas fa-chevron-right"></i></a></div></nav><!--!--></div><div class="column column-left is-4-tablet is-4-desktop is-3-widescreen  order-1"><div class="card widget" data-type="profile"><div class="card-content"><nav class="level"><div class="level-item has-text-centered flex-shrink-1"><div><figure class="image is-128x128 mx-auto mb-2"><img class="avatar is-rounded" src="/img/avatar.svg" alt="王亚伟"></figure><p class="title is-size-4 is-block" style="line-height:inherit;">王亚伟</p><p class="is-size-6 is-block">3D · AI</p><p class="is-size-6 is-flex justify-content-center"><i class="fas fa-map-marker-alt mr-1"></i><span>北京</span></p></div></div></nav><nav class="level is-mobile"><div class="level-item has-text-centered is-marginless"><div><p class="heading">文章</p><a href="/archives/"><p class="title">55</p></a></div></div><div class="level-item has-text-centered is-marginless"><div><p class="heading">分类</p><a href="/categories/"><p class="title">9</p></a></div></div><div class="level-item has-text-centered is-marginless"><div><p class="heading">标签</p><a href="/tags/"><p class="title">64</p></a></div></div></nav><div class="level"><a class="level-item button is-primary is-rounded" href="https://github.com/wywzixin" target="_blank" rel="me noopener">关注我</a></div><div class="level is-mobile is-multiline"><a class="level-item button is-transparent is-marginless" target="_blank" rel="me noopener" title="Github" href="https://github.com/wywzixin"><i class="fab fa-github"></i></a><a class="level-item button is-transparent is-marginless" target="_blank" rel="me noopener" title="Facebook" href="https://facebook.com"><i class="fab fa-facebook"></i></a><a class="level-item button is-transparent is-marginless" target="_blank" rel="me noopener" title="Twitter" href="https://twitter.com"><i class="fab fa-twitter"></i></a><a class="level-item button is-transparent is-marginless" target="_blank" rel="me noopener" title="Dribbble" href="https://dribbble.com"><i class="fab fa-dribbble"></i></a><a class="level-item button is-transparent is-marginless" target="_blank" rel="me noopener" title="RSS" href="/"><i class="fas fa-rss"></i></a></div></div></div><!--!--><div class="card widget" data-type="categories"><div class="card-content"><div class="menu"><h3 class="menu-label">分类</h3><ul class="menu-list"><li><a class="level is-mobile" href="/categories/cesium/"><span class="level-start"><span class="level-item">cesium</span></span><span class="level-end"><span class="level-item tag">24</span></span></a></li><li><a class="level is-mobile" href="/categories/threejs/"><span class="level-start"><span class="level-item">threejs</span></span><span class="level-end"><span class="level-item tag">6</span></span></a></li><li><a class="level is-mobile" href="/categories/%E5%8C%97%E6%96%97%E7%BD%91%E6%A0%BC%E6%80%A7%E8%83%BD%E4%BC%98%E5%8C%96/"><span class="level-start"><span class="level-item">北斗网格性能优化</span></span><span class="level-end"><span class="level-item tag">7</span></span></a></li><li><a class="level is-mobile" href="/categories/%E5%9B%BE%E5%BD%A2%E5%AD%A6/"><span class="level-start"><span class="level-item">图形学</span></span><span class="level-end"><span class="level-item tag">1</span></span></a></li><li><a class="level is-mobile" href="/categories/vue/"><span class="level-start"><span class="level-item">vue</span></span><span class="level-end"><span class="level-item tag">2</span></span></a></li><li><a class="level is-mobile" href="/categories/agent/"><span class="level-start"><span class="level-item">agent</span></span><span class="level-end"><span class="level-item tag">8</span></span></a></li><li><a class="level is-mobile" href="/categories/claude-code/"><span class="level-start"><span class="level-item">claude code</span></span><span class="level-end"><span class="level-item tag">2</span></span></a></li><li><a class="level is-mobile" href="/categories/python/"><span class="level-start"><span class="level-item">python</span></span><span class="level-end"><span class="level-item tag">3</span></span></a></li><li><a class="level is-mobile" href="/categories/%E5%A4%A7%E6%A8%A1%E5%9E%8B/"><span class="level-start"><span class="level-item">大模型</span></span><span class="level-end"><span class="level-item tag">2</span></span></a></li></ul></div></div></div><div class="card widget" data-type="tags"><div class="card-content"><div class="menu"><h3 class="menu-label">标签</h3><div class="field is-grouped is-grouped-multiline"><div class="control"><a class="tags has-addons" href="/tags/Agent-Loop/"><span class="tag">Agent Loop</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/Cesium/"><span class="tag">Cesium</span><span class="tag">7</span></a></div><div class="control"><a class="tags has-addons" href="/tags/DrawCommand/"><span class="tag">DrawCommand</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/ENU/"><span class="tag">ENU</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/Embedding/"><span class="tag">Embedding</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/FAISS/"><span class="tag">FAISS</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/Function-Calling/"><span class="tag">Function Calling</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/GPT-3/"><span class="tag">GPT-3</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/GPU-Instancing/"><span class="tag">GPU Instancing</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/L6/"><span class="tag">L6</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/L7/"><span class="tag">L7</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/LLM/"><span class="tag">LLM</span><span class="tag">2</span></a></div><div class="control"><a class="tags has-addons" href="/tags/LOD/"><span class="tag">LOD</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/LRU/"><span class="tag">LRU</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/LangChain/"><span class="tag">LangChain</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/MCP/"><span class="tag">MCP</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/PBR/"><span class="tag">PBR</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/Pinecone/"><span class="tag">Pinecone</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/RAG/"><span class="tag">RAG</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/RTE/"><span class="tag">RTE</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/ReAct/"><span class="tag">ReAct</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/SSE/"><span class="tag">SSE</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/Shader/"><span class="tag">Shader</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/Token/"><span class="tag">Token</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/Transferable/"><span class="tag">Transferable</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/Transformer/"><span class="tag">Transformer</span><span class="tag">2</span></a></div><div class="control"><a class="tags has-addons" href="/tags/Web-Worker/"><span class="tag">Web Worker</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/WebGL/"><span class="tag">WebGL</span><span class="tag">2</span></a></div><div class="control"><a class="tags has-addons" href="/tags/agent/"><span class="tag">agent</span><span class="tag">8</span></a></div><div class="control"><a class="tags has-addons" href="/tags/asyncio/"><span class="tag">asyncio</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/cesium/"><span class="tag">cesium</span><span class="tag">24</span></a></div><div class="control"><a class="tags has-addons" href="/tags/claude-code/"><span class="tag">claude code</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/markstream/"><span class="tag">markstream</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/prompt-cache/"><span class="tag">prompt cache</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/python/"><span class="tag">python</span><span class="tag">3</span></a></div><div class="control"><a class="tags has-addons" href="/tags/threejs/"><span class="tag">threejs</span><span class="tag">6</span></a></div><div class="control"><a class="tags has-addons" href="/tags/vue/"><span class="tag">vue</span><span class="tag">2</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E4%B8%8A%E4%B8%8B%E6%96%87%E5%8E%8B%E7%BC%A9/"><span class="tag">上下文压缩</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E4%B8%8A%E4%B8%8B%E6%96%87%E5%B7%A5%E7%A8%8B/"><span class="tag">上下文工程</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E5%86%85%E5%AD%98%E7%AE%A1%E7%90%86/"><span class="tag">内存管理</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E5%8C%97%E6%96%97%E7%BD%91%E6%A0%BC/"><span class="tag">北斗网格</span><span class="tag">7</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E5%8F%82%E6%95%B0%E9%87%8F/"><span class="tag">参数量</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E5%90%8E%E5%A4%84%E7%90%86/"><span class="tag">后处理</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E5%90%91%E9%87%8F%E6%95%B0%E6%8D%AE%E5%BA%93/"><span class="tag">向量数据库</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E5%93%8D%E5%BA%94%E5%BC%8F%E5%8E%9F%E7%90%86/"><span class="tag">响应式原理</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E5%9B%BE%E5%BD%A2%E5%AD%A6/"><span class="tag">图形学</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E5%A4%9A%E5%A4%B4%E6%B3%A8%E6%84%8F%E5%8A%9B/"><span class="tag">多头注意力</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E5%A4%A7%E6%A8%A1%E5%9E%8B/"><span class="tag">大模型</span><span class="tag">2</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E5%B7%A5%E5%85%B7%E8%B0%83%E7%94%A8/"><span class="tag">工具调用</span><span class="tag">2</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E5%B9%B6%E5%8F%91/"><span class="tag">并发</span><span class="tag">2</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E6%9D%90%E8%B4%A8/"><span class="tag">材质</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E6%9E%B6%E6%9E%84%E8%AE%BE%E8%AE%A1/"><span class="tag">架构设计</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E6%A3%80%E7%B4%A2%E5%A2%9E%E5%BC%BA%E7%94%9F%E6%88%90/"><span class="tag">检索增强生成</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E6%B3%A8%E6%84%8F%E5%8A%9B%E6%9C%BA%E5%88%B6/"><span class="tag">注意力机制</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E6%B5%81%E5%BC%8F%E5%93%8D%E5%BA%94/"><span class="tag">流式响应</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E6%B5%81%E5%BC%8F%E6%B8%B2%E6%9F%93/"><span class="tag">流式渲染</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E7%A9%BA%E9%97%B4%E5%88%86%E5%9D%97/"><span class="tag">空间分块</span><span class="tag">2</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E7%BA%BF%E7%A8%8B%E6%B1%A0/"><span class="tag">线程池</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E7%BC%93%E5%AD%98/"><span class="tag">缓存</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E8%A7%86%E9%94%A5%E5%89%94%E9%99%A4/"><span class="tag">视锥剔除</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E8%AE%B0%E5%BF%86%E7%B3%BB%E7%BB%9F/"><span class="tag">记忆系统</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E8%BD%AE%E5%BB%93%E7%BA%BF/"><span class="tag">轮廓线</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E9%AB%98%E5%BA%A6%E5%88%87%E7%89%87/"><span class="tag">高度切片</span><span class="tag">1</span></a></div></div></div></div></div><div class="card widget" data-type="subscribe-email"><div class="card-content"><div class="menu"><h3 class="menu-label">订阅更新</h3><form action="https://feedburner.google.com/fb/a/mailverify" method="post" target="popupwindow" onsubmit="window.open(&#039;https://feedburner.google.com/fb/a/mailverify?uri=&#039;,&#039;popupwindow&#039;,&#039;scrollbars=yes,width=550,height=520&#039;);return true"><input type="hidden" value="" name="uri"><input type="hidden" name="loc" value="en_US"><div class="field has-addons"><div class="control has-icons-left is-expanded"><input class="input" name="email" type="email" placeholder="Email"><span class="icon is-small is-left"><i class="fas fa-envelope"></i></span></div><div class="control"><input class="button" type="submit" value="订阅"></div></div></form></div></div></div><div class="column-right-shadow is-hidden-widescreen"></div></div><div class="column column-right is-4-tablet is-4-desktop is-3-widescreen is-hidden-touch is-hidden-desktop-only order-3"><div class="card widget" data-type="recent-posts"><div class="card-content"><h3 class="menu-label">最新文章</h3><article class="media"><div class="media-content"><p class="date"><time dateTime="2026-09-15T00:00:00.000Z">2026-09-15</time></p><p class="title"><a href="/agent/llm-request-streaming/">LLM 请求与流式响应</a></p><p class="categories"><a href="/categories/agent/">agent</a></p></div></article><article class="media"><div class="media-content"><p class="date"><time dateTime="2026-09-14T23:00:00.000Z">2026-09-15</time></p><p class="title"><a href="/agent/react-agent-loop/">ReAct 与 Agent Loop</a></p><p class="categories"><a href="/categories/agent/">agent</a></p></div></article><article class="media"><div class="media-content"><p class="date"><time dateTime="2026-09-14T22:00:00.000Z">2026-09-15</time></p><p class="title"><a href="/agent/mcp-protocol/">MCP 协议与工具接入</a></p><p class="categories"><a href="/categories/agent/">agent</a></p></div></article><article class="media"><div class="media-content"><p class="date"><time dateTime="2026-09-14T21:00:00.000Z">2026-09-15</time></p><p class="title"><a href="/agent/function-calling/">Function Calling介绍</a></p><p class="categories"><a href="/categories/agent/">agent</a></p></div></article><article class="media"><div class="media-content"><p class="date"><time dateTime="2026-09-14T20:00:00.000Z">2026-09-15</time></p><p class="title"><a href="/agent/context-compaction/">上下文压缩与 Token 管理</a></p><p class="categories"><a href="/categories/agent/">agent</a></p></div></article></div></div><div class="card widget" data-type="archives"><div class="card-content"><div class="menu"><h3 class="menu-label">归档</h3><ul class="menu-list"><li><a class="level is-mobile" href="/archives/2026/09/"><span class="level-start"><span class="level-item">九月 2026</span></span><span class="level-end"><span class="level-item tag">25</span></span></a></li><li><a class="level is-mobile" href="/archives/2026/03/"><span class="level-start"><span class="level-item">三月 2026</span></span><span class="level-end"><span class="level-item tag">4</span></span></a></li><li><a class="level is-mobile" href="/archives/2025/03/"><span class="level-start"><span class="level-item">三月 2025</span></span><span class="level-end"><span class="level-item tag">25</span></span></a></li><li><a class="level is-mobile" href="/archives/2025/01/"><span class="level-start"><span class="level-item">一月 2025</span></span><span class="level-end"><span class="level-item tag">1</span></span></a></li></ul></div></div></div></div></div></div></section><footer class="footer"><div class="container"><div class="level"><div class="level-start"><a class="footer-logo is-block mb-2" href="/"><img src="/img/logo.svg" alt="Hexo" height="28"></a><p class="is-size-7"><span>&copy; 2026 wangyawei</span>  Powered by <a href="https://hexo.io/" target="_blank" rel="noopener">Hexo</a> &amp; <a href="https://github.com/ppoffice/hexo-theme-icarus" target="_blank" rel="noopener">Icarus</a></p><p class="is-size-7">© 2019</p></div><div class="level-end"><div class="field has-addons"><p class="control"><a class="button is-transparent is-large" target="_blank" rel="noopener" title="Creative Commons" href="https://creativecommons.org/"><i class="fab fa-creative-commons"></i></a></p><p class="control"><a class="button is-transparent is-large" target="_blank" rel="noopener" title="Attribution 4.0 International" href="https://creativecommons.org/licenses/by/4.0/"><i class="fab fa-creative-commons-by"></i></a></p><p class="control"><a class="button is-transparent is-large" target="_blank" rel="noopener" title="Download on GitHub" href="https://github.com/ppoffice/hexo-theme-icarus"><i class="fab fa-github"></i></a></p></div></div></div></div></footer><script src="https://cdn.jsdelivr.net/npm/jquery@3.3.1/dist/jquery.min.js"></script><script src="https://cdn.jsdelivr.net/npm/moment@2.22.2/min/moment-with-locales.min.js"></script><script src="https://cdn.jsdelivr.net/npm/clipboard@2.0.4/dist/clipboard.min.js" defer></script><script>moment.locale("zh-cn");</script><script>var IcarusThemeSettings = {
+            article: {
+                highlight: {
+                    clipboard: true,
+                    fold: 'unfolded'
+                }
+            }
+        };</script><script data-pjax src="/js/column.js"></script><a id="back-to-top" title="回到顶端" href="javascript:;"><i class="fas fa-chevron-up"></i></a><script data-pjax src="/js/back_to_top.js" defer></script><!--!--><!--!--><!--!--><script src="https://cdn.jsdelivr.net/npm/cookieconsent@3.1.1/build/cookieconsent.min.js" defer></script><script>window.addEventListener("load", () => {
+      window.cookieconsent.initialise({
+        type: "info",
+        theme: "edgeless",
+        static: false,
+        position: "bottom-left",
+        content: {
+          message: "此网站使用Cookie来改善您的体验。",
+          dismiss: "知道了！",
+          allow: "允许使用Cookie",
+          deny: "拒绝",
+          link: "了解更多",
+          policy: "Cookie政策",
+          href: "https://www.cookiesandyou.com/",
+        },
+        palette: {
+          popup: {
+            background: "#edeff5",
+            text: "#838391"
+          },
+          button: {
+            background: "#4b81e8"
+          },
+        },
+      });
+    });</script><script src="https://cdn.jsdelivr.net/npm/lightgallery@1.10.0/dist/js/lightgallery.min.js" defer></script><script src="https://cdn.jsdelivr.net/npm/justifiedGallery@3.8.1/dist/js/jquery.justifiedGallery.min.js" defer></script><script>window.addEventListener("load", () => {
+            if (typeof $.fn.lightGallery === 'function') {
+                $('.article').lightGallery({ selector: '.gallery-item' });
+            }
+            if (typeof $.fn.justifiedGallery === 'function') {
+                if ($('.justified-gallery > p > .gallery-item').length) {
+                    $('.justified-gallery > p > .gallery-item').unwrap();
+                }
+                $('.justified-gallery').justifiedGallery();
+            }
+        });</script><!--!--><!--!--><script src="https://cdn.jsdelivr.net/npm/pjax@0.2.8/pjax.min.js"></script><script src="/js/pjax.js"></script><!--!--><!--!--><!--!--><script data-pjax src="/js/main.js" defer></script><div class="searchbox"><div class="searchbox-container"><div class="searchbox-header"><div class="searchbox-input-container"><input class="searchbox-input" type="text" placeholder="想要查找什么..."></div><a class="searchbox-close" href="javascript:;">×</a></div><div class="searchbox-body"></div></div></div><script data-pjax src="/js/insight.js" defer></script><script data-pjax>document.addEventListener('DOMContentLoaded', function () {
+            loadInsight({"contentUrl":"/content.json"}, {"hint":"想要查找什么...","untitled":"(无标题)","posts":"文章","pages":"页面","categories":"分类","tags":"标签"});
+        });</script></body></html>

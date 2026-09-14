@@ -1,0 +1,284 @@
+<!doctype html>
+<html lang="zh"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1"><meta><meta name="referrer" content="no-referrer"><title>Transformer 原理 - Hexo</title><link rel="manifest" href="/manifest.json"><meta name="application-name" content="Hexo"><meta name="msapplication-TileImage" content="/img/favicon.svg"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="Hexo"><meta name="apple-mobile-web-app-status-bar-style" content="default"><meta name="description" content="从 GPT-3 175B 的「96 层、96 个头」讲起，理清 Wq&amp;#x2F;Wk&amp;#x2F;Wv 与 Q&amp;#x2F;K&amp;#x2F;V 的区别、注意力到底在算什么、为什么要堆 96 层、多头又多头在哪里。"><meta property="og:type" content="blog"><meta property="og:title" content="Transformer 原理"><meta property="og:url" content="https://wywzixin.github.io/llm/transformer/"><meta property="og:site_name" content="Hexo"><meta property="og:description" content="从 GPT-3 175B 的「96 层、96 个头」讲起，理清 Wq&amp;#x2F;Wk&amp;#x2F;Wv 与 Q&amp;#x2F;K&amp;#x2F;V 的区别、注意力到底在算什么、为什么要堆 96 层、多头又多头在哪里。"><meta property="og:locale" content="zh_CN"><meta property="og:image" content="https://wywzixin.github.io/img/og_image.png"><meta property="article:published_time" content="2026-09-14T16:30:00.000Z"><meta property="article:modified_time" content="2026-09-14T17:26:53.236Z"><meta property="article:author" content="wangyawei"><meta property="article:tag" content="大模型"><meta property="article:tag" content="Transformer"><meta property="article:tag" content="注意力机制"><meta property="article:tag" content="多头注意力"><meta property="twitter:card" content="summary"><meta property="twitter:image:src" content="https://wywzixin.github.io/img/og_image.png"><script type="application/ld+json">{"@context":"https://schema.org","@type":"BlogPosting","mainEntityOfPage":{"@type":"WebPage","@id":"https://wywzixin.github.io/llm/transformer/"},"headline":"Transformer 原理","image":["https://wywzixin.github.io/img/og_image.png"],"datePublished":"2026-09-14T16:30:00.000Z","dateModified":"2026-09-14T17:26:53.236Z","author":{"@type":"Person","name":"wangyawei"},"publisher":{"@type":"Organization","name":"Hexo","logo":{"@type":"ImageObject","url":"https://wywzixin.github.io/img/logo.svg"}},"description":"从 GPT-3 175B 的「96 层、96 个头」讲起，理清 Wq&#x2F;Wk&#x2F;Wv 与 Q&#x2F;K&#x2F;V 的区别、注意力到底在算什么、为什么要堆 96 层、多头又多头在哪里。"}</script><link rel="canonical" href="https://wywzixin.github.io/llm/transformer/"><link rel="icon" href="/img/favicon.svg"><style>html,body{background:#f7f7f7}</style><link rel="stylesheet" href="https://use.fontawesome.com/releases/v6.0.0/css/all.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js@11.7.0/styles/atom-one-dark.css"><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Ubuntu:wght@400;600&amp;family=Source+Code+Pro"><link rel="stylesheet" href="/css/default.css"><!--!--><!--!--><!--!--><!--!--><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/cookieconsent@3.1.1/build/cookieconsent.min.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/lightgallery@1.10.0/dist/css/lightgallery.min.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/justifiedGallery@3.8.1/dist/css/justifiedGallery.min.css"><!--!--><!--!--><!--!--><style>.pace{-webkit-pointer-events:none;pointer-events:none;-webkit-user-select:none;-moz-user-select:none;user-select:none}.pace-inactive{display:none}.pace .pace-progress{background:#3273dc;position:fixed;z-index:2000;top:0;right:100%;width:100%;height:2px}</style><script src="https://cdn.jsdelivr.net/npm/pace-js@1.2.4/pace.min.js"></script><!--!--><!--!--><!-- hexo injector head_end start --><script>
+  (function () {
+      function switchTab() {
+          if (!location.hash) {
+            return;
+          }
+
+          const id = '#' + CSS.escape(location.hash.substring(1));
+          const $tabMenu = document.querySelector(`.tabs a[href="${id}"]`);
+          if (!$tabMenu) {
+            return;
+          }
+
+          const $tabMenuContainer = $tabMenu.parentElement.parentElement;
+          Array.from($tabMenuContainer.children).forEach($menu => $menu.classList.remove('is-active'));
+          Array.from($tabMenuContainer.querySelectorAll('a'))
+              .map($menu => document.getElementById($menu.getAttribute("href").substring(1)))
+              .forEach($content => $content.classList.add('is-hidden'));
+
+          if ($tabMenu) {
+              $tabMenu.parentElement.classList.add('is-active');
+          }
+          const $activeTab = document.querySelector(id);
+          if ($activeTab) {
+              $activeTab.classList.remove('is-hidden');
+          }
+      }
+      switchTab();
+      window.addEventListener('hashchange', switchTab, false);
+  })();
+  </script><!-- hexo injector head_end end --><meta name="generator" content="Hexo 7.3.0"></head><body class="is-3-column"><nav class="navbar navbar-main"><div class="container navbar-container"><div class="navbar-brand justify-content-center"><a class="navbar-item navbar-logo" href="/"><img src="/img/logo.svg" alt="Hexo" height="28"></a></div><div class="navbar-menu"><div class="navbar-start"><a class="navbar-item" href="/">首页</a><a class="navbar-item" href="/archives">归档</a><a class="navbar-item" href="/categories">分类</a><a class="navbar-item" href="/tags">标签</a><a class="navbar-item" href="/about">关于</a></div><div class="navbar-end"><a class="navbar-item" target="_blank" rel="noopener" title="Download on GitHub" href="https://github.com/ppoffice/hexo-theme-icarus"><i class="fab fa-github"></i></a><a class="navbar-item search" title="搜索" href="javascript:;"><i class="fas fa-search"></i></a></div></div></div></nav><section class="section"><div class="container"><div class="columns"><div class="column order-2 column-main is-8-tablet is-8-desktop is-6-widescreen"><div class="card"><article class="card-content article" role="article"><div class="article-meta is-size-7 is-uppercase level is-mobile"><div class="level-left"><span class="level-item"><time dateTime="2026-09-14T16:30:00.000Z" title="2026/9/15 00:30:00">2026-09-15</time>发表</span><span class="level-item"><time dateTime="2026-09-14T17:26:53.236Z" title="2026/9/15 01:26:53">2026-09-15</time>更新</span><span class="level-item"><a class="link-muted" href="/categories/%E5%A4%A7%E6%A8%A1%E5%9E%8B/">大模型</a></span><span class="level-item">24 分钟读完 (大约3669个字)</span></div></div><h1 class="title is-3 is-size-4-mobile">Transformer 原理</h1><div class="content"><p>GPT-3 175B 的配置表里有三个数字，第一次看很容易混在一起：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">96 层</span><br><span class="line">12288 隐藏维度</span><br><span class="line">96 个注意力头</span><br></pre></td></tr></table></figure>
+
+<p>它们说的完全不是一回事：</p>
+<ul>
+<li><strong>96 层</strong>：文字要连续加工 96 轮。</li>
+<li><strong>96 个头</strong>：每一轮里，同时有 96 个「小组」从不同角度聚合信息。</li>
+<li><strong>12288</strong>：每个 Token 用 12288 个数字表示。</li>
+</ul>
+<p>这一篇就沿着这三个数字，把注意力机制从头捋一遍。</p>
+<span id="more"></span>
+
+<h2 id="1-Wq、Wk、Wv-是参数，Q、K、V-是临时结果"><a href="#1-Wq、Wk、Wv-是参数，Q、K、V-是临时结果" class="headerlink" title="1. Wq、Wk、Wv 是参数，Q、K、V 是临时结果"></a>1. Wq、Wk、Wv 是参数，Q、K、V 是临时结果</h2><p>这是最容易混的一对概念，先分开：</p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>是什么</th>
+<th>什么时候存在</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>Wq、Wk、Wv</strong></td>
+<td>可训练的权重矩阵</td>
+<td>训练完就固化在模型里</td>
+</tr>
+<tr>
+<td><strong>Q、K、V</strong></td>
+<td>输入算出来的中间结果</td>
+<td>每换一句话就重新算一遍</td>
+</tr>
+</tbody></table>
+<p>它们的关系是三条并行的全连接分支：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">┌→ Q = X·Wq + bq</span><br><span class="line">输入向量 X ─────────┼→ K = X·Wk + bk</span><br><span class="line">                    └→ V = X·Wv + bv</span><br></pre></td></tr></table></figure>
+
+<p>至于 Q、K、V 各自代表什么，最省事的记法是三张「卡片」：</p>
+<ul>
+<li><strong>Q，Query</strong>：我现在想找什么信息？</li>
+<li><strong>K，Key</strong>：我身上有什么特征，可以被谁找到？</li>
+<li><strong>V，Value</strong>：别人找到我以后，我实际能提供什么信息？</li>
+</ul>
+<p>然后一句话概括整个过程：</p>
+<p><strong>用 Q 和所有 K 算出匹配程度，再按匹配程度对所有 V 加权求和。</strong></p>
+<p>注意最后那句的主语——<strong>加权求和的对象是 V，不是 K。</strong> 这一步错的人很多。</p>
+<h2 id="2-走一遍完整流程：「苹果手机很好用」"><a href="#2-走一遍完整流程：「苹果手机很好用」" class="headerlink" title="2. 走一遍完整流程：「苹果手机很好用」"></a>2. 走一遍完整流程：「苹果手机很好用」</h2><p>把句子拆成三个 Token，每个词先有自己的初始向量：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">苹果   → x0</span><br><span class="line">手机   → x1</span><br><span class="line">很好用 → x2</span><br></pre></td></tr></table></figure>
+
+<p>现在站在「苹果」这个位置，任务是判断它是水果还是品牌。</p>
+<h3 id="第一步：算「苹果」的-Q"><a href="#第一步：算「苹果」的-Q" class="headerlink" title="第一步：算「苹果」的 Q"></a>第一步：算「苹果」的 Q</h3><figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">q苹果 = x苹果 × Wq</span><br></pre></td></tr></table></figure>
+
+<p>这个 Q 问的是：<strong>为了理解我现在的含义，我应该去找什么线索？</strong></p>
+<h3 id="第二步：每个词都生成自己的-K，然后逐个匹配"><a href="#第二步：每个词都生成自己的-K，然后逐个匹配" class="headerlink" title="第二步：每个词都生成自己的 K，然后逐个匹配"></a>第二步：每个词都生成自己的 K，然后逐个匹配</h3><figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">k苹果   = x苹果 × Wk</span><br><span class="line">k手机   = x手机 × Wk</span><br><span class="line">k很好用 = x很好用 × Wk</span><br></pre></td></tr></table></figure>
+
+<p>K 就像是贴在每个词身上的标签：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">苹果的 K：我可能是水果，也可能是品牌</span><br><span class="line">手机的 K：我属于电子产品</span><br><span class="line">很好用的 K：这是对产品的评价</span><br></pre></td></tr></table></figure>
+
+<p>拿「苹果」的 Q 去点乘每一个 K，得到原始相关度：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">q苹果 · k苹果   → 0.1</span><br><span class="line">q苹果 · k手机   → 0.7</span><br><span class="line">q苹果 · k很好用 → 0.2</span><br></pre></td></tr></table></figure>
+
+<p>到这一步模型其实在表达：<strong>为了理解「苹果」，最该关注「手机」。</strong></p>
+<h3 id="第三步：Softmax-之后，对-V-加权求和"><a href="#第三步：Softmax-之后，对-V-加权求和" class="headerlink" title="第三步：Softmax 之后，对 V 加权求和"></a>第三步：Softmax 之后，对 V 加权求和</h3><p>每个词还会产生自己的 V：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">v苹果   = x苹果 × Wv</span><br><span class="line">v手机   = x手机 × Wv</span><br><span class="line">v很好用 = x很好用 × Wv</span><br></pre></td></tr></table></figure>
+
+<p>V 才是这个词真正能提供给别人的信息。把上面那三个原始相关度过一遍 Softmax，变成加起来等于 1 的注意力权重，再对 V 加权求和：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">苹果的新向量</span><br><span class="line">= 0.1 × v苹果</span><br><span class="line">+ 0.7 × v手机</span><br><span class="line">+ 0.2 × v很好用</span><br></pre></td></tr></table></figure>
+
+<p>新向量里混进了大量「手机」的信息，模型因此更容易判断：这里的「苹果」是品牌，不是水果。</p>
+<p>这就是课件里说的<strong>信息聚合</strong>。</p>
+<h2 id="3-它其实还是那个-z-wx-b"><a href="#3-它其实还是那个-z-wx-b" class="headerlink" title="3. 它其实还是那个 z &#x3D; wx + b"></a>3. 它其实还是那个 z &#x3D; wx + b</h2><p>这一步能消掉很多神秘感。</p>
+<p>神经网络的基本形式是：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">z = wx + b</span><br></pre></td></tr></table></figure>
+
+<p>Q、K、V 的计算本质上还是它，唯一的区别是——<strong>输入不再是一个数字，而是一个很长的向量</strong>，所以 <code>w</code> 也从标量变成了矩阵：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">Q = X·Wq + bq</span><br><span class="line">K = X·Wk + bk</span><br><span class="line">V = X·Wv + bv</span><br></pre></td></tr></table></figure>
+
+<p>换句话说：</p>
+<ul>
+<li><code>Wq</code> 是一层全连接神经网络的权重</li>
+<li><code>Wk</code> 是另一层</li>
+<li><code>Wv</code> 又是另一层</li>
+</ul>
+<p>写成一个极小的例子，矩阵里每个数都是要学的参数：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">Wq = [</span><br><span class="line">  [ 0.2,  0.5],</span><br><span class="line">  [ 0.8, -0.1]</span><br><span class="line">]</span><br></pre></td></tr></table></figure>
+
+<h3 id="这些参数一开始知道该干什么吗"><a href="#这些参数一开始知道该干什么吗" class="headerlink" title="这些参数一开始知道该干什么吗"></a>这些参数一开始知道该干什么吗</h3><p>不知道。训练刚开始时 <code>Wq</code>、<code>Wk</code>、<code>Wv</code> 基本都是随机值。</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">预测结果 → 计算损失 → 反向传播 → 梯度下降</span><br></pre></td></tr></table></figure>
+
+<p>反复很多轮之后，它们各自长出了分工：<code>Wq</code> 学着生成「查询信息」，<code>Wk</code> 学着生成「匹配标签」，<code>Wv</code> 学着提取「实际内容」。</p>
+<p><strong>所以这三组矩阵的功能不是程序员规定出来的，是数据训出来的。</strong></p>
+<h2 id="4-一层里做了什么：Attention-MLP"><a href="#4-一层里做了什么：Attention-MLP" class="headerlink" title="4. 一层里做了什么：Attention + MLP"></a>4. 一层里做了什么：Attention + MLP</h2><p>一个 GPT 式的 Transformer 层，其实只包含两件事：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line">输入 X</span><br><span class="line">  ↓</span><br><span class="line">多头自注意力 Attention</span><br><span class="line">不同 Token 之间交换信息</span><br><span class="line">  ↓</span><br><span class="line">残差连接、归一化</span><br><span class="line">  ↓</span><br><span class="line">前馈网络 MLP</span><br><span class="line">每个 Token 单独加工刚收到的信息</span><br><span class="line">  ↓</span><br><span class="line">残差连接、归一化</span><br><span class="line">  ↓</span><br><span class="line">输出给下一层</span><br></pre></td></tr></table></figure>
+
+<p>拆成两句话：</p>
+<ol>
+<li><strong>Attention：大家互相交换资料。</strong></li>
+<li><strong>MLP：每个人独立加工收到的资料。</strong></li>
+</ol>
+<p>交换和加工交替进行，才算完整的一层。</p>
+<h2 id="5-为什么要堆-96-层"><a href="#5-为什么要堆-96-层" class="headerlink" title="5. 为什么要堆 96 层"></a>5. 为什么要堆 96 层</h2><p>关键在一点：<strong>第二层接收到的不是最初的词向量，而是第一层的输出。</strong></p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">第 1 层：用自己的 Wq₁、Wk₁、Wv₁ → 注意力聚合 → X₁</span><br><span class="line">第 2 层：用自己的 Wq₂、Wk₂、Wv₂ → 注意力聚合 → X₂</span><br><span class="line">第 3 层：用自己的 Wq₃、Wk₃、Wv₃ → X₃</span><br><span class="line">……</span><br><span class="line">第 96 层 → X₉₆</span><br></pre></td></tr></table></figure>
+
+<p>每一层都保存着自己独立的一套矩阵，而且通常互不相同。</p>
+<h3 id="96-轮会议"><a href="#96-轮会议" class="headerlink" title="96 轮会议"></a>96 轮会议</h3><p>拿这句话举例：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">小明把书送给小红，因为她很喜欢这本书。</span><br></pre></td></tr></table></figure>
+
+<p>第一层之前，「她」只有初始向量。第一层聚合之后，「她」的向量里已经混进了一些「小红」的信息。</p>
+<p>第二轮再开会时，「喜欢」就能和已经携带了「小红」信息的「她」交流，从而建立「小红喜欢书」的关系。</p>
+<p>用一句话概括这个递进：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">词与词的关系 → 短语关系 → 句子结构 → 指代关系 → 语义和逻辑关系</span><br></pre></td></tr></table></figure>
+
+<p>这只是帮助理解的直觉，并不表示官方规定「第 3 层学语法、第 40 层学逻辑」。不同的分工是模型在训练中自己形成的。</p>
+<h3 id="为什么一次-Attention-不够"><a href="#为什么一次-Attention-不够" class="headerlink" title="为什么一次 Attention 不够"></a>为什么一次 Attention 不够</h3><p>换成这个例子更明显：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">小王告诉小李，他的公司开发了一款产品，</span><br><span class="line">这款产品因为价格便宜而非常受欢迎。</span><br></pre></td></tr></table></figure>
+
+<p>要理解「受欢迎」，得先把一串关系接起来：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line">受欢迎</span><br><span class="line">  ↑ 因为价格便宜</span><br><span class="line">  ↑ 价格属于这款产品</span><br><span class="line">  ↑ 这款产品由公司开发</span><br><span class="line">  ↑ 公司可能属于「他」</span><br><span class="line">  ↑ 「他」指谁还得结合上下文</span><br></pre></td></tr></table></figure>
+
+<p>单次 Attention 理论上可以让任意两个词直接交流，但<strong>一次交流很难完成这么多层的组合加工</strong>。多层的价值就在这里：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">第一层建立简单关系</span><br><span class="line">第二层把简单关系组合起来</span><br><span class="line">第三层再组合前面的结果</span><br><span class="line">……</span><br></pre></td></tr></table></figure>
+
+<p>类比算术：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">先算 a + b</span><br><span class="line">再算 (a + b) × c</span><br><span class="line">再算 ((a + b) × c) - d</span><br></pre></td></tr></table></figure>
+
+<p>每一步都不复杂，串起来才能算复杂的东西。</p>
+<h2 id="6-多头注意力：一层里的-96-个观察角度"><a href="#6-多头注意力：一层里的-96-个观察角度" class="headerlink" title="6. 多头注意力：一层里的 96 个观察角度"></a>6. 多头注意力：一层里的 96 个观察角度</h2><p>先看一个头有什么局限。还是这句话：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">小明把苹果手机送给小红，因为她很喜欢这款手机。</span><br></pre></td></tr></table></figure>
+
+<p>如果只有一个注意力头，站在「她」的位置，它只能生成<strong>一套</strong>权重：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">小明  ：0.10</span><br><span class="line">苹果  ：0.05</span><br><span class="line">手机  ：0.15</span><br><span class="line">小红  ：0.60</span><br><span class="line">喜欢  ：0.10</span><br></pre></td></tr></table></figure>
+
+<p>这套权重主要在表达「她指的是小红」。但这句话里同时存在好几种关系：</p>
+<ul>
+<li>「苹果」和「手机」组成产品名</li>
+<li>「送给」的对象是「小红」</li>
+<li>「她」指「小红」</li>
+<li>「喜欢」的对象是「手机」</li>
+<li>「因为」表示原因</li>
+</ul>
+<p><strong>一套权重装不下所有关系。</strong></p>
+<h3 id="多头-96-个调查员同时读一句话"><a href="#多头-96-个调查员同时读一句话" class="headerlink" title="多头 &#x3D; 96 个调查员同时读一句话"></a>多头 &#x3D; 96 个调查员同时读一句话</h3><figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">头 1：重点看「谁指代谁」</span><br><span class="line">头 2：重点看「动作和对象」</span><br><span class="line">头 3：重点看「修饰关系」</span><br><span class="line">头 4：重点看「原因和结果」</span><br><span class="line">……</span><br></pre></td></tr></table></figure>
+
+<p>每个头有自己的一组参数：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">头 1：Wq¹、Wk¹、Wv¹</span><br><span class="line">头 2：Wq²、Wk²、Wv²</span><br><span class="line">头 3：Wq³、Wk³、Wv³</span><br><span class="line">……</span><br></pre></td></tr></table></figure>
+
+<p>于是同一个 Token 经过不同的头，会算出不同的 Q、K、V。同样地，「哪个头负责什么」是训练出来的，不是人工分配的。</p>
+<p>96 个头各算各的，然后拼起来：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line">┌→ 头 1 → O₁</span><br><span class="line">输入 X ─────────┼→ 头 2 → O₂</span><br><span class="line">                ├→ 头 3 → O₃</span><br><span class="line">                └→ ……</span><br><span class="line"></span><br><span class="line">O₁ + O₂ + O₃ + …… → 拼接 → 经过 Wo 融合 → 输出</span><br></pre></td></tr></table></figure>
+
+<p>所以多头<strong>不是从多个答案里挑一个</strong>，而是：</p>
+<p><strong>把多个角度得到的信息全部保留下来，再融合成一个新向量。</strong></p>
+<h3 id="多头不会把计算量乘以-96"><a href="#多头不会把计算量乘以-96" class="headerlink" title="多头不会把计算量乘以 96"></a>多头不会把计算量乘以 96</h3><p>这是最容易误算的一处。</p>
+<p>如果每个头都拿完整的 12288 维去算，那确实会夸张到 96 倍。但实际做法是<strong>把总维度分给各个头</strong>：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">12288 ÷ 96 = 128 维</span><br></pre></td></tr></table></figure>
+
+<p>每个头只处理 128 维：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">Q： [1300, 128]</span><br><span class="line">K： [1300, 128]</span><br><span class="line">V： [1300, 128]</span><br><span class="line">O： [1300, 128]</span><br></pre></td></tr></table></figure>
+
+<p>拼回去：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">96 × 128 = 12288</span><br></pre></td></tr></table></figure>
+
+<p>又变回 <code>[1300, 12288]</code>，可以继续交给 MLP 或者下一层。</p>
+<p>所以多头的作用<strong>不是堆 96 倍算力，而是把同一个表示空间划分成 96 个不同的观察角度</strong>。总计算量和一个完整的 12288 维头基本相当。</p>
+<p>一个小规模的例子：原始向量 8 维、2 个头，每个头处理 4 维。</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">头 1 输出：[0.2, 0.8, 0.1, 0.5]</span><br><span class="line">头 2 输出：[0.7, 0.3, 0.9, 0.4]</span><br><span class="line"></span><br><span class="line">拼接后：  [0.2, 0.8, 0.1, 0.5, 0.7, 0.3, 0.9, 0.4]</span><br></pre></td></tr></table></figure>
+
+<p>又变回 8 维，随后再经过 <code>Wo</code> 把不同头的信息充分混合。</p>
+<h2 id="7-289-这个数字是怎么来的"><a href="#7-289-这个数字是怎么来的" class="headerlink" title="7. 289 这个数字是怎么来的"></a>7. 289 这个数字是怎么来的</h2><p>回头补上开头那个数。</p>
+<p>每个注意力头有三组投影矩阵：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">Wq：生成查询 Q</span><br><span class="line">Wk：生成键 K</span><br><span class="line">Wv：生成值 V</span><br></pre></td></tr></table></figure>
+
+<p>96 个头：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">96 × 3 = 288 组</span><br></pre></td></tr></table></figure>
+
+<p>所有头的结果拼接之后，再经过一个公共的融合矩阵：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">288 + 1（Wo）= 289</span><br></pre></td></tr></table></figure>
+
+<p><strong>这个数算得对</strong>，但叫它「289 个神经网络」不准确。更准确的说法是：</p>
+<p><strong>289 组线性变换矩阵，前 288 组属于 96 个注意力头，最后 1 个 <code>Wo</code> 负责融合。</strong></p>
+<p>还要注意这个 289 只统计了注意力部分——MLP 里的矩阵、以及所有归一化层的参数都没算进去。</p>
+<h2 id="8-几处需要再精确一点的地方"><a href="#8-几处需要再精确一点的地方" class="headerlink" title="8. 几处需要再精确一点的地方"></a>8. 几处需要再精确一点的地方</h2><h3 id="一、少了一个-√d"><a href="#一、少了一个-√d" class="headerlink" title="一、少了一个 √d"></a>一、少了一个 √d</h3><p>完整的注意力公式是：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">Attention(Q, K, V) = softmax(QKᵀ / √d_k) · V</span><br></pre></td></tr></table></figure>
+
+<p>前面「Q 和 K 算匹配程度 → Softmax」之间省略了<strong>除以 √d_k</strong> 这一步。<code>d_k</code> 是每个头的维度，GPT-3 里是 128，所以除的是 √128 ≈ 11.3。</p>
+<p>为什么必须除：Q 和 K 的每一维如果都近似独立随机，点积的方差会随维度线性增长。128 维点积出来的数值会很大，Softmax 在这种输入下会变得极其尖锐——几乎退化成 one-hot，梯度趋近于 0，训练就推不动了。除以 √d_k 的作用是把方差拉回 1 附近。</p>
+<h3 id="二、归一化的位置和原始论文不一样"><a href="#二、归一化的位置和原始论文不一样" class="headerlink" title="二、归一化的位置和原始论文不一样"></a>二、归一化的位置和原始论文不一样</h3><p>上面画的流程是「先加残差、再归一化」，这是 2017 年原始 Transformer 的做法（Post-LN）：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">Post-LN：LayerNorm(x + Sublayer(x))</span><br></pre></td></tr></table></figure>
+
+<p>GPT-2 把它改成了先归一化再进子层，GPT-3 沿用（GPT-3 论文里写的是 pre-normalization）：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">Pre-LN：x + Sublayer(LayerNorm(x))</span><br></pre></td></tr></table></figure>
+
+<p>顺带还有两个改动：GPT-2 在最后一层之后额外加了一个 LayerNorm；残差分支的权重按 <code>1/√N</code>（N 是残差层数）缩放初始化——堆到 96 层的时候，这一步对训练稳定性相当关键。</p>
+<h3 id="三、1300-不是-GPT-3-的固定值"><a href="#三、1300-不是-GPT-3-的固定值" class="headerlink" title="三、1300 不是 GPT-3 的固定值"></a>三、1300 不是 GPT-3 的固定值</h3><p>96 层、12288 维、96 头这三个数确实是 GPT-3 175B 的真实配置（论文 Table 2.1）。但课件里的 1300 只是<strong>举例用的输入长度</strong>，不是模型参数。GPT-3 的上下文窗口是 2048 个 Token。</p>
+<h2 id="9-小结"><a href="#9-小结" class="headerlink" title="9. 小结"></a>9. 小结</h2><p><strong>一、<code>Wq</code>、<code>Wk</code>、<code>Wv</code> 是参数，<code>Q</code>、<code>K</code>、<code>V</code> 是临时结果。</strong> 参数训练完就固化在模型里，QKV 每换一句话重算一遍。</p>
+<p><strong>二、注意力干的事一句话说完：</strong> 用 Q 和所有 K 算匹配程度，Softmax 归一化成权重，再对 V 加权求和。<strong>加权的是 V，不是 K。</strong></p>
+<p><strong>三、它没有脱离 <code>z = wx + b</code>。</strong> 只是输入从标量变成了向量，<code>w</code> 变成了矩阵，所以 <code>Wq</code>、<code>Wk</code>、<code>Wv</code> 就是三层并行的全连接。它们的分工不是设计出来的，是训出来的。</p>
+<p><strong>四、一层做两件事：Attention 交换信息，MLP 单独加工。</strong></p>
+<p><strong>五、96 层是 96 轮加工，不是把原句重复算 96 遍。</strong> 每层都有自己的 <code>Wq</code>、<code>Wk</code>、<code>Wv</code>，接收的是上一层的输出。</p>
+<p><strong>六、多头不是多层。</strong> 多层增加<strong>理解的深度</strong>，多头增加<strong>同一层观察问题的角度</strong>。96 个头是把 12288 维拆成 96 份各 128 维并行计算，<strong>不是 96 倍计算量</strong>。</p>
+<p><strong>七、课件里那几个数都能对上。</strong> 96 层、12288 维、96 头、每头 128 维，都是 GPT-3 175B 的真实配置；1300 只是举例的输入长度。</p>
+<h2 id="参考"><a href="#参考" class="headerlink" title="参考"></a>参考</h2><ul>
+<li>Attention Is All You Need（2017，原始 Transformer）：<a target="_blank" rel="noopener" href="https://arxiv.org/abs/1706.03762">https://arxiv.org/abs/1706.03762</a></li>
+<li>Language Models are Few-Shot Learners（GPT-3，配置见 Table 2.1）：<a target="_blank" rel="noopener" href="https://arxiv.org/abs/2005.14165">https://arxiv.org/abs/2005.14165</a></li>
+<li>GPT-2 论文（pre-normalization 出自这里）：<a target="_blank" rel="noopener" href="https://cdn.openai.com/better-language-models/language_models_are_unsupervised_multitask_learners.pdf">https://cdn.openai.com/better-language-models/language_models_are_unsupervised_multitask_learners.pdf</a></li>
+<li>The Illustrated Transformer（图解，适合配合看）：<a target="_blank" rel="noopener" href="https://jalammar.github.io/illustrated-transformer/">https://jalammar.github.io/illustrated-transformer/</a></li>
+<li>相关：LLM 请求与流式响应 —— <a href="https://wywzixin.github.io/agent/llm-request-streaming/">https://wywzixin.github.io/agent/llm-request-streaming/</a></li>
+<li>ReAct 与 Agent Loop —— <a href="https://wywzixin.github.io/agent/react-agent-loop/">https://wywzixin.github.io/agent/react-agent-loop/</a></li>
+<li>向量数据库：FAISS 与 Pinecone —— <a href="https://wywzixin.github.io/agent/vector-database/">https://wywzixin.github.io/agent/vector-database/</a></li>
+</ul>
+</div><div class="article-licensing box"><div class="licensing-title"><p>Transformer 原理</p><p><a href="https://wywzixin.github.io/llm/transformer/">https://wywzixin.github.io/llm/transformer/</a></p></div><div class="licensing-meta level is-mobile"><div class="level-left"><div class="level-item is-narrow"><div><h6>作者</h6><p>wangyawei</p></div></div><div class="level-item is-narrow"><div><h6>发布于</h6><p>2026-09-15</p></div></div><div class="level-item is-narrow"><div><h6>更新于</h6><p>2026-09-15</p></div></div><div class="level-item is-narrow"><div><h6>许可协议</h6><p><a class="icons" rel="noopener" target="_blank" title="Creative Commons" href="https://creativecommons.org/"><i class="icon fab fa-creative-commons"></i></a><a class="icons" rel="noopener" target="_blank" title="Attribution" href="https://creativecommons.org/licenses/by/4.0/"><i class="icon fab fa-creative-commons-by"></i></a><a class="icons" rel="noopener" target="_blank" title="Noncommercial" href="https://creativecommons.org/licenses/by-nc/4.0/"><i class="icon fab fa-creative-commons-nc"></i></a></p></div></div></div></div></div><div class="article-tags is-size-7 mb-4"><span class="mr-2">#</span><a class="link-muted mr-2" rel="tag" href="/tags/%E5%A4%A7%E6%A8%A1%E5%9E%8B/">大模型</a><a class="link-muted mr-2" rel="tag" href="/tags/Transformer/">Transformer</a><a class="link-muted mr-2" rel="tag" href="/tags/%E6%B3%A8%E6%84%8F%E5%8A%9B%E6%9C%BA%E5%88%B6/">注意力机制</a><a class="link-muted mr-2" rel="tag" href="/tags/%E5%A4%9A%E5%A4%B4%E6%B3%A8%E6%84%8F%E5%8A%9B/">多头注意力</a></div><!--!--></article></div><!--!--><nav class="post-navigation mt-4 level is-mobile"><div class="level-start"><a class="article-nav-prev level level-item link-muted" href="/agent/vector-database/"><i class="level-item fas fa-chevron-left"></i><span class="level-item">向量数据库：FAISS 与 Pinecone</span></a></div><div class="level-end"><a class="article-nav-next level level-item link-muted" href="/llm/transformer-2/"><span class="level-item">Transformer 原理 2</span><i class="level-item fas fa-chevron-right"></i></a></div></nav><!--!--></div><div class="column column-left is-4-tablet is-4-desktop is-3-widescreen  order-1"><div class="card widget" data-type="profile"><div class="card-content"><nav class="level"><div class="level-item has-text-centered flex-shrink-1"><div><figure class="image is-128x128 mx-auto mb-2"><img class="avatar is-rounded" src="/img/avatar.svg" alt="王亚伟"></figure><p class="title is-size-4 is-block" style="line-height:inherit;">王亚伟</p><p class="is-size-6 is-block">3D · AI</p><p class="is-size-6 is-flex justify-content-center"><i class="fas fa-map-marker-alt mr-1"></i><span>北京</span></p></div></div></nav><nav class="level is-mobile"><div class="level-item has-text-centered is-marginless"><div><p class="heading">文章</p><a href="/archives/"><p class="title">55</p></a></div></div><div class="level-item has-text-centered is-marginless"><div><p class="heading">分类</p><a href="/categories/"><p class="title">9</p></a></div></div><div class="level-item has-text-centered is-marginless"><div><p class="heading">标签</p><a href="/tags/"><p class="title">64</p></a></div></div></nav><div class="level"><a class="level-item button is-primary is-rounded" href="https://github.com/wywzixin" target="_blank" rel="me noopener">关注我</a></div><div class="level is-mobile is-multiline"><a class="level-item button is-transparent is-marginless" target="_blank" rel="me noopener" title="Github" href="https://github.com/wywzixin"><i class="fab fa-github"></i></a><a class="level-item button is-transparent is-marginless" target="_blank" rel="me noopener" title="Facebook" href="https://facebook.com"><i class="fab fa-facebook"></i></a><a class="level-item button is-transparent is-marginless" target="_blank" rel="me noopener" title="Twitter" href="https://twitter.com"><i class="fab fa-twitter"></i></a><a class="level-item button is-transparent is-marginless" target="_blank" rel="me noopener" title="Dribbble" href="https://dribbble.com"><i class="fab fa-dribbble"></i></a><a class="level-item button is-transparent is-marginless" target="_blank" rel="me noopener" title="RSS" href="/"><i class="fas fa-rss"></i></a></div></div></div><!--!--><div class="card widget" data-type="categories"><div class="card-content"><div class="menu"><h3 class="menu-label">分类</h3><ul class="menu-list"><li><a class="level is-mobile" href="/categories/cesium/"><span class="level-start"><span class="level-item">cesium</span></span><span class="level-end"><span class="level-item tag">24</span></span></a></li><li><a class="level is-mobile" href="/categories/threejs/"><span class="level-start"><span class="level-item">threejs</span></span><span class="level-end"><span class="level-item tag">6</span></span></a></li><li><a class="level is-mobile" href="/categories/%E5%8C%97%E6%96%97%E7%BD%91%E6%A0%BC%E6%80%A7%E8%83%BD%E4%BC%98%E5%8C%96/"><span class="level-start"><span class="level-item">北斗网格性能优化</span></span><span class="level-end"><span class="level-item tag">7</span></span></a></li><li><a class="level is-mobile" href="/categories/%E5%9B%BE%E5%BD%A2%E5%AD%A6/"><span class="level-start"><span class="level-item">图形学</span></span><span class="level-end"><span class="level-item tag">1</span></span></a></li><li><a class="level is-mobile" href="/categories/vue/"><span class="level-start"><span class="level-item">vue</span></span><span class="level-end"><span class="level-item tag">2</span></span></a></li><li><a class="level is-mobile" href="/categories/agent/"><span class="level-start"><span class="level-item">agent</span></span><span class="level-end"><span class="level-item tag">8</span></span></a></li><li><a class="level is-mobile" href="/categories/claude-code/"><span class="level-start"><span class="level-item">claude code</span></span><span class="level-end"><span class="level-item tag">2</span></span></a></li><li><a class="level is-mobile" href="/categories/python/"><span class="level-start"><span class="level-item">python</span></span><span class="level-end"><span class="level-item tag">3</span></span></a></li><li><a class="level is-mobile" href="/categories/%E5%A4%A7%E6%A8%A1%E5%9E%8B/"><span class="level-start"><span class="level-item">大模型</span></span><span class="level-end"><span class="level-item tag">2</span></span></a></li></ul></div></div></div><div class="card widget" data-type="tags"><div class="card-content"><div class="menu"><h3 class="menu-label">标签</h3><div class="field is-grouped is-grouped-multiline"><div class="control"><a class="tags has-addons" href="/tags/Agent-Loop/"><span class="tag">Agent Loop</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/Cesium/"><span class="tag">Cesium</span><span class="tag">7</span></a></div><div class="control"><a class="tags has-addons" href="/tags/DrawCommand/"><span class="tag">DrawCommand</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/ENU/"><span class="tag">ENU</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/Embedding/"><span class="tag">Embedding</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/FAISS/"><span class="tag">FAISS</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/Function-Calling/"><span class="tag">Function Calling</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/GPT-3/"><span class="tag">GPT-3</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/GPU-Instancing/"><span class="tag">GPU Instancing</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/L6/"><span class="tag">L6</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/L7/"><span class="tag">L7</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/LLM/"><span class="tag">LLM</span><span class="tag">2</span></a></div><div class="control"><a class="tags has-addons" href="/tags/LOD/"><span class="tag">LOD</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/LRU/"><span class="tag">LRU</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/LangChain/"><span class="tag">LangChain</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/MCP/"><span class="tag">MCP</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/PBR/"><span class="tag">PBR</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/Pinecone/"><span class="tag">Pinecone</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/RAG/"><span class="tag">RAG</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/RTE/"><span class="tag">RTE</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/ReAct/"><span class="tag">ReAct</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/SSE/"><span class="tag">SSE</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/Shader/"><span class="tag">Shader</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/Token/"><span class="tag">Token</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/Transferable/"><span class="tag">Transferable</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/Transformer/"><span class="tag">Transformer</span><span class="tag">2</span></a></div><div class="control"><a class="tags has-addons" href="/tags/Web-Worker/"><span class="tag">Web Worker</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/WebGL/"><span class="tag">WebGL</span><span class="tag">2</span></a></div><div class="control"><a class="tags has-addons" href="/tags/agent/"><span class="tag">agent</span><span class="tag">8</span></a></div><div class="control"><a class="tags has-addons" href="/tags/asyncio/"><span class="tag">asyncio</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/cesium/"><span class="tag">cesium</span><span class="tag">24</span></a></div><div class="control"><a class="tags has-addons" href="/tags/claude-code/"><span class="tag">claude code</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/markstream/"><span class="tag">markstream</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/prompt-cache/"><span class="tag">prompt cache</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/python/"><span class="tag">python</span><span class="tag">3</span></a></div><div class="control"><a class="tags has-addons" href="/tags/threejs/"><span class="tag">threejs</span><span class="tag">6</span></a></div><div class="control"><a class="tags has-addons" href="/tags/vue/"><span class="tag">vue</span><span class="tag">2</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E4%B8%8A%E4%B8%8B%E6%96%87%E5%8E%8B%E7%BC%A9/"><span class="tag">上下文压缩</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E4%B8%8A%E4%B8%8B%E6%96%87%E5%B7%A5%E7%A8%8B/"><span class="tag">上下文工程</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E5%86%85%E5%AD%98%E7%AE%A1%E7%90%86/"><span class="tag">内存管理</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E5%8C%97%E6%96%97%E7%BD%91%E6%A0%BC/"><span class="tag">北斗网格</span><span class="tag">7</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E5%8F%82%E6%95%B0%E9%87%8F/"><span class="tag">参数量</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E5%90%8E%E5%A4%84%E7%90%86/"><span class="tag">后处理</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E5%90%91%E9%87%8F%E6%95%B0%E6%8D%AE%E5%BA%93/"><span class="tag">向量数据库</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E5%93%8D%E5%BA%94%E5%BC%8F%E5%8E%9F%E7%90%86/"><span class="tag">响应式原理</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E5%9B%BE%E5%BD%A2%E5%AD%A6/"><span class="tag">图形学</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E5%A4%9A%E5%A4%B4%E6%B3%A8%E6%84%8F%E5%8A%9B/"><span class="tag">多头注意力</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E5%A4%A7%E6%A8%A1%E5%9E%8B/"><span class="tag">大模型</span><span class="tag">2</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E5%B7%A5%E5%85%B7%E8%B0%83%E7%94%A8/"><span class="tag">工具调用</span><span class="tag">2</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E5%B9%B6%E5%8F%91/"><span class="tag">并发</span><span class="tag">2</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E6%9D%90%E8%B4%A8/"><span class="tag">材质</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E6%9E%B6%E6%9E%84%E8%AE%BE%E8%AE%A1/"><span class="tag">架构设计</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E6%A3%80%E7%B4%A2%E5%A2%9E%E5%BC%BA%E7%94%9F%E6%88%90/"><span class="tag">检索增强生成</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E6%B3%A8%E6%84%8F%E5%8A%9B%E6%9C%BA%E5%88%B6/"><span class="tag">注意力机制</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E6%B5%81%E5%BC%8F%E5%93%8D%E5%BA%94/"><span class="tag">流式响应</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E6%B5%81%E5%BC%8F%E6%B8%B2%E6%9F%93/"><span class="tag">流式渲染</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E7%A9%BA%E9%97%B4%E5%88%86%E5%9D%97/"><span class="tag">空间分块</span><span class="tag">2</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E7%BA%BF%E7%A8%8B%E6%B1%A0/"><span class="tag">线程池</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E7%BC%93%E5%AD%98/"><span class="tag">缓存</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E8%A7%86%E9%94%A5%E5%89%94%E9%99%A4/"><span class="tag">视锥剔除</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E8%AE%B0%E5%BF%86%E7%B3%BB%E7%BB%9F/"><span class="tag">记忆系统</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E8%BD%AE%E5%BB%93%E7%BA%BF/"><span class="tag">轮廓线</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E9%AB%98%E5%BA%A6%E5%88%87%E7%89%87/"><span class="tag">高度切片</span><span class="tag">1</span></a></div></div></div></div></div><div class="card widget" data-type="subscribe-email"><div class="card-content"><div class="menu"><h3 class="menu-label">订阅更新</h3><form action="https://feedburner.google.com/fb/a/mailverify" method="post" target="popupwindow" onsubmit="window.open(&#039;https://feedburner.google.com/fb/a/mailverify?uri=&#039;,&#039;popupwindow&#039;,&#039;scrollbars=yes,width=550,height=520&#039;);return true"><input type="hidden" value="" name="uri"><input type="hidden" name="loc" value="en_US"><div class="field has-addons"><div class="control has-icons-left is-expanded"><input class="input" name="email" type="email" placeholder="Email"><span class="icon is-small is-left"><i class="fas fa-envelope"></i></span></div><div class="control"><input class="button" type="submit" value="订阅"></div></div></form></div></div></div><div class="column-right-shadow is-hidden-widescreen"></div></div><div class="column column-right is-4-tablet is-4-desktop is-3-widescreen is-hidden-touch is-hidden-desktop-only order-3"><div class="card widget" data-type="recent-posts"><div class="card-content"><h3 class="menu-label">最新文章</h3><article class="media"><div class="media-content"><p class="date"><time dateTime="2026-09-15T00:00:00.000Z">2026-09-15</time></p><p class="title"><a href="/agent/llm-request-streaming/">LLM 请求与流式响应</a></p><p class="categories"><a href="/categories/agent/">agent</a></p></div></article><article class="media"><div class="media-content"><p class="date"><time dateTime="2026-09-14T23:00:00.000Z">2026-09-15</time></p><p class="title"><a href="/agent/react-agent-loop/">ReAct 与 Agent Loop</a></p><p class="categories"><a href="/categories/agent/">agent</a></p></div></article><article class="media"><div class="media-content"><p class="date"><time dateTime="2026-09-14T22:00:00.000Z">2026-09-15</time></p><p class="title"><a href="/agent/mcp-protocol/">MCP 协议与工具接入</a></p><p class="categories"><a href="/categories/agent/">agent</a></p></div></article><article class="media"><div class="media-content"><p class="date"><time dateTime="2026-09-14T21:00:00.000Z">2026-09-15</time></p><p class="title"><a href="/agent/function-calling/">Function Calling介绍</a></p><p class="categories"><a href="/categories/agent/">agent</a></p></div></article><article class="media"><div class="media-content"><p class="date"><time dateTime="2026-09-14T20:00:00.000Z">2026-09-15</time></p><p class="title"><a href="/agent/context-compaction/">上下文压缩与 Token 管理</a></p><p class="categories"><a href="/categories/agent/">agent</a></p></div></article></div></div><div class="card widget" data-type="archives"><div class="card-content"><div class="menu"><h3 class="menu-label">归档</h3><ul class="menu-list"><li><a class="level is-mobile" href="/archives/2026/09/"><span class="level-start"><span class="level-item">九月 2026</span></span><span class="level-end"><span class="level-item tag">25</span></span></a></li><li><a class="level is-mobile" href="/archives/2026/03/"><span class="level-start"><span class="level-item">三月 2026</span></span><span class="level-end"><span class="level-item tag">4</span></span></a></li><li><a class="level is-mobile" href="/archives/2025/03/"><span class="level-start"><span class="level-item">三月 2025</span></span><span class="level-end"><span class="level-item tag">25</span></span></a></li><li><a class="level is-mobile" href="/archives/2025/01/"><span class="level-start"><span class="level-item">一月 2025</span></span><span class="level-end"><span class="level-item tag">1</span></span></a></li></ul></div></div></div></div></div></div></section><footer class="footer"><div class="container"><div class="level"><div class="level-start"><a class="footer-logo is-block mb-2" href="/"><img src="/img/logo.svg" alt="Hexo" height="28"></a><p class="is-size-7"><span>&copy; 2026 wangyawei</span>  Powered by <a href="https://hexo.io/" target="_blank" rel="noopener">Hexo</a> &amp; <a href="https://github.com/ppoffice/hexo-theme-icarus" target="_blank" rel="noopener">Icarus</a></p><p class="is-size-7">© 2019</p></div><div class="level-end"><div class="field has-addons"><p class="control"><a class="button is-transparent is-large" target="_blank" rel="noopener" title="Creative Commons" href="https://creativecommons.org/"><i class="fab fa-creative-commons"></i></a></p><p class="control"><a class="button is-transparent is-large" target="_blank" rel="noopener" title="Attribution 4.0 International" href="https://creativecommons.org/licenses/by/4.0/"><i class="fab fa-creative-commons-by"></i></a></p><p class="control"><a class="button is-transparent is-large" target="_blank" rel="noopener" title="Download on GitHub" href="https://github.com/ppoffice/hexo-theme-icarus"><i class="fab fa-github"></i></a></p></div></div></div></div></footer><script src="https://cdn.jsdelivr.net/npm/jquery@3.3.1/dist/jquery.min.js"></script><script src="https://cdn.jsdelivr.net/npm/moment@2.22.2/min/moment-with-locales.min.js"></script><script src="https://cdn.jsdelivr.net/npm/clipboard@2.0.4/dist/clipboard.min.js" defer></script><script>moment.locale("zh-cn");</script><script>var IcarusThemeSettings = {
+            article: {
+                highlight: {
+                    clipboard: true,
+                    fold: 'unfolded'
+                }
+            }
+        };</script><script data-pjax src="/js/column.js"></script><a id="back-to-top" title="回到顶端" href="javascript:;"><i class="fas fa-chevron-up"></i></a><script data-pjax src="/js/back_to_top.js" defer></script><!--!--><!--!--><!--!--><script src="https://cdn.jsdelivr.net/npm/cookieconsent@3.1.1/build/cookieconsent.min.js" defer></script><script>window.addEventListener("load", () => {
+      window.cookieconsent.initialise({
+        type: "info",
+        theme: "edgeless",
+        static: false,
+        position: "bottom-left",
+        content: {
+          message: "此网站使用Cookie来改善您的体验。",
+          dismiss: "知道了！",
+          allow: "允许使用Cookie",
+          deny: "拒绝",
+          link: "了解更多",
+          policy: "Cookie政策",
+          href: "https://www.cookiesandyou.com/",
+        },
+        palette: {
+          popup: {
+            background: "#edeff5",
+            text: "#838391"
+          },
+          button: {
+            background: "#4b81e8"
+          },
+        },
+      });
+    });</script><script src="https://cdn.jsdelivr.net/npm/lightgallery@1.10.0/dist/js/lightgallery.min.js" defer></script><script src="https://cdn.jsdelivr.net/npm/justifiedGallery@3.8.1/dist/js/jquery.justifiedGallery.min.js" defer></script><script>window.addEventListener("load", () => {
+            if (typeof $.fn.lightGallery === 'function') {
+                $('.article').lightGallery({ selector: '.gallery-item' });
+            }
+            if (typeof $.fn.justifiedGallery === 'function') {
+                if ($('.justified-gallery > p > .gallery-item').length) {
+                    $('.justified-gallery > p > .gallery-item').unwrap();
+                }
+                $('.justified-gallery').justifiedGallery();
+            }
+        });</script><!--!--><!--!--><script src="https://cdn.jsdelivr.net/npm/pjax@0.2.8/pjax.min.js"></script><script src="/js/pjax.js"></script><!--!--><!--!--><!--!--><script data-pjax src="/js/main.js" defer></script><div class="searchbox"><div class="searchbox-container"><div class="searchbox-header"><div class="searchbox-input-container"><input class="searchbox-input" type="text" placeholder="想要查找什么..."></div><a class="searchbox-close" href="javascript:;">×</a></div><div class="searchbox-body"></div></div></div><script data-pjax src="/js/insight.js" defer></script><script data-pjax>document.addEventListener('DOMContentLoaded', function () {
+            loadInsight({"contentUrl":"/content.json"}, {"hint":"想要查找什么...","untitled":"(无标题)","posts":"文章","pages":"页面","categories":"分类","tags":"标签"});
+        });</script></body></html>

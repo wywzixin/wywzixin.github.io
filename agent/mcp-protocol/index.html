@@ -1,0 +1,434 @@
+<!doctype html>
+<html lang="zh"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1"><meta><meta name="referrer" content="no-referrer"><title>MCP 协议与工具接入 - Hexo</title><link rel="manifest" href="/manifest.json"><meta name="application-name" content="Hexo"><meta name="msapplication-TileImage" content="/img/favicon.svg"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="Hexo"><meta name="apple-mobile-web-app-status-bar-style" content="default"><meta name="description" content="你写一个 Agent，想让它能查 GitHub、查数据库、发 Slack——每个工具都得适配一遍。MCP 在中间定了一层协议，把 N×M 的接线变成 N+M。这篇讲清三个角色（Host &amp;#x2F; Client &amp;#x2F; Server）、它为什么分成 JSON-RPC 和传输两层、stdio 和 Streamable HTTP 各自适合什么、一次连接的三步握手，以及工具接进来之后怎么进工具表、工具太多时为什么要"><meta property="og:type" content="blog"><meta property="og:title" content="MCP 协议与工具接入"><meta property="og:url" content="https://wywzixin.github.io/agent/mcp-protocol/"><meta property="og:site_name" content="Hexo"><meta property="og:description" content="你写一个 Agent，想让它能查 GitHub、查数据库、发 Slack——每个工具都得适配一遍。MCP 在中间定了一层协议，把 N×M 的接线变成 N+M。这篇讲清三个角色（Host &amp;#x2F; Client &amp;#x2F; Server）、它为什么分成 JSON-RPC 和传输两层、stdio 和 Streamable HTTP 各自适合什么、一次连接的三步握手，以及工具接进来之后怎么进工具表、工具太多时为什么要"><meta property="og:locale" content="zh_CN"><meta property="og:image" content="https://cdn.nlark.com/yuque/0/2026/png/276041/1784216595366-31d8d324-c926-485c-a372-bc37f7bafb88.png"><meta property="og:image" content="https://cdn.nlark.com/yuque/0/2026/png/276041/1784216621817-0750506c-8cab-4202-8e7c-8e6fd205ed3b.png"><meta property="og:image" content="https://cdn.nlark.com/yuque/0/2026/png/276041/1784216790720-fead2842-e743-49bb-9e14-08e2d8793077.png"><meta property="og:image" content="https://cdn.nlark.com/yuque/0/2026/png/276041/1784216824056-6fdeff62-2083-4d88-85b3-8ae00e6681b7.png"><meta property="og:image" content="https://cdn.nlark.com/yuque/0/2026/png/276041/1784216875398-24643272-4bc0-41d1-b70c-6f91b085535a.png"><meta property="og:image" content="https://cdn.nlark.com/yuque/0/2026/png/276041/1784216885139-0f76d758-59e8-4e46-9e14-5f8aaaa22b6b.png"><meta property="og:image" content="https://cdn.nlark.com/yuque/0/2026/png/276041/1784216904044-48febe9a-d495-422f-905b-1634a196c242.png"><meta property="og:image" content="https://cdn.nlark.com/yuque/0/2026/png/276041/1784216923664-c07c40e7-98d3-4fd9-af0c-fa7a141fac82.png"><meta property="og:image" content="https://cdn.nlark.com/yuque/0/2026/png/276041/1784216965715-1f2d999b-bea2-43d4-915f-8bfedaafbf1d.png"><meta property="og:image" content="https://cdn.nlark.com/yuque/0/2026/png/276041/1784217009660-c17e4bb6-3b68-4383-b3d0-5e0fb0dc78f7.png"><meta property="og:image" content="https://cdn.nlark.com/yuque/0/2026/png/276041/1784217070354-a98fe14f-1d44-4d42-b281-36e1b3ef21b8.png"><meta property="og:image" content="https://cdn.nlark.com/yuque/0/2026/png/276041/1784217168185-634de730-d0c9-4641-9f16-7dd3bef4264d.png"><meta property="og:image" content="https://cdn.nlark.com/yuque/0/2026/png/276041/1784217206609-cc713356-7e6c-40c7-acf4-631aa925ac2b.png"><meta property="og:image" content="https://cdn.nlark.com/yuque/0/2026/png/276041/1784217249151-6e6ffdf4-2827-45cd-b3d8-69319a3ee695.png"><meta property="og:image" content="https://cdn.nlark.com/yuque/0/2026/png/276041/1784217266560-069da23a-8219-4d79-abd3-6bf15b503011.png"><meta property="og:image" content="https://cdn.nlark.com/yuque/0/2026/png/276041/1784217284906-7b9badf2-98fc-4b25-be25-7e5ebe753996.png"><meta property="og:image" content="https://cdn.nlark.com/yuque/0/2026/png/276041/1784217317776-f863e285-d26f-4663-8c89-21bc80f9ee39.png"><meta property="og:image" content="https://cdn.nlark.com/yuque/0/2026/png/276041/1784217405630-c3d5a60d-20d7-4203-bb3b-d68116257721.png"><meta property="og:image" content="https://cdn.nlark.com/yuque/0/2026/png/276041/1784217447526-bf8060a8-1f08-4ce8-9c0e-836b5c114dc2.png"><meta property="og:image" content="https://cdn.nlark.com/yuque/0/2026/png/276041/1784870333532-4e0aa914-33d0-4bef-bce0-59e8433a3af7.png"><meta property="og:image" content="https://cdn.nlark.com/yuque/0/2026/png/276041/1784217536245-1ee614f2-12b3-4b9c-b682-3af98c800ad5.png"><meta property="og:image" content="https://cdn.nlark.com/yuque/0/2026/png/276041/1784217658291-6a3a8532-104b-467f-af97-332f1d247696.png"><meta property="og:image" content="https://cdn.nlark.com/yuque/0/2026/png/276041/1784217740349-90f01799-399d-4059-afd8-d4f2654f615e.png"><meta property="og:image" content="https://cdn.nlark.com/yuque/0/2026/png/276041/1784217754387-28539b35-685b-4dd7-a05b-bc68af5bfa3e.png"><meta property="og:image" content="https://cdn.nlark.com/yuque/0/2026/png/276041/1784217812315-da9b0d57-524d-4dfc-b0b2-b34b301bf826.png"><meta property="og:image" content="https://cdn.nlark.com/yuque/0/2026/png/276041/1784217844600-82a8fcf7-e123-4fed-94b6-bc02c28ab54c.png"><meta property="og:image" content="https://cdn.nlark.com/yuque/0/2026/png/276041/1784217973964-48042171-aaef-4cbc-bcb8-29ff740422e0.png"><meta property="article:published_time" content="2026-09-14T22:00:00.000Z"><meta property="article:modified_time" content="2026-09-14T17:19:06.149Z"><meta property="article:author" content="wangyawei"><meta property="article:tag" content="agent"><meta property="article:tag" content="工具调用"><meta property="article:tag" content="MCP"><meta property="twitter:card" content="summary"><meta property="twitter:image:src" content="https://cdn.nlark.com/yuque/0/2026/png/276041/1784216595366-31d8d324-c926-485c-a372-bc37f7bafb88.png"><script type="application/ld+json">{"@context":"https://schema.org","@type":"BlogPosting","mainEntityOfPage":{"@type":"WebPage","@id":"https://wywzixin.github.io/agent/mcp-protocol/"},"headline":"MCP 协议与工具接入","image":["https://cdn.nlark.com/yuque/0/2026/png/276041/1784216595366-31d8d324-c926-485c-a372-bc37f7bafb88.png","https://cdn.nlark.com/yuque/0/2026/png/276041/1784216621817-0750506c-8cab-4202-8e7c-8e6fd205ed3b.png","https://cdn.nlark.com/yuque/0/2026/png/276041/1784216790720-fead2842-e743-49bb-9e14-08e2d8793077.png","https://cdn.nlark.com/yuque/0/2026/png/276041/1784216824056-6fdeff62-2083-4d88-85b3-8ae00e6681b7.png","https://cdn.nlark.com/yuque/0/2026/png/276041/1784216875398-24643272-4bc0-41d1-b70c-6f91b085535a.png","https://cdn.nlark.com/yuque/0/2026/png/276041/1784216885139-0f76d758-59e8-4e46-9e14-5f8aaaa22b6b.png","https://cdn.nlark.com/yuque/0/2026/png/276041/1784216904044-48febe9a-d495-422f-905b-1634a196c242.png","https://cdn.nlark.com/yuque/0/2026/png/276041/1784216923664-c07c40e7-98d3-4fd9-af0c-fa7a141fac82.png","https://cdn.nlark.com/yuque/0/2026/png/276041/1784216965715-1f2d999b-bea2-43d4-915f-8bfedaafbf1d.png","https://cdn.nlark.com/yuque/0/2026/png/276041/1784217009660-c17e4bb6-3b68-4383-b3d0-5e0fb0dc78f7.png","https://cdn.nlark.com/yuque/0/2026/png/276041/1784217070354-a98fe14f-1d44-4d42-b281-36e1b3ef21b8.png","https://cdn.nlark.com/yuque/0/2026/png/276041/1784217168185-634de730-d0c9-4641-9f16-7dd3bef4264d.png","https://cdn.nlark.com/yuque/0/2026/png/276041/1784217206609-cc713356-7e6c-40c7-acf4-631aa925ac2b.png","https://cdn.nlark.com/yuque/0/2026/png/276041/1784217249151-6e6ffdf4-2827-45cd-b3d8-69319a3ee695.png","https://cdn.nlark.com/yuque/0/2026/png/276041/1784217266560-069da23a-8219-4d79-abd3-6bf15b503011.png","https://cdn.nlark.com/yuque/0/2026/png/276041/1784217284906-7b9badf2-98fc-4b25-be25-7e5ebe753996.png","https://cdn.nlark.com/yuque/0/2026/png/276041/1784217317776-f863e285-d26f-4663-8c89-21bc80f9ee39.png","https://cdn.nlark.com/yuque/0/2026/png/276041/1784217405630-c3d5a60d-20d7-4203-bb3b-d68116257721.png","https://cdn.nlark.com/yuque/0/2026/png/276041/1784217447526-bf8060a8-1f08-4ce8-9c0e-836b5c114dc2.png","https://cdn.nlark.com/yuque/0/2026/png/276041/1784870333532-4e0aa914-33d0-4bef-bce0-59e8433a3af7.png","https://cdn.nlark.com/yuque/0/2026/png/276041/1784217536245-1ee614f2-12b3-4b9c-b682-3af98c800ad5.png","https://cdn.nlark.com/yuque/0/2026/png/276041/1784217658291-6a3a8532-104b-467f-af97-332f1d247696.png","https://cdn.nlark.com/yuque/0/2026/png/276041/1784217740349-90f01799-399d-4059-afd8-d4f2654f615e.png","https://cdn.nlark.com/yuque/0/2026/png/276041/1784217754387-28539b35-685b-4dd7-a05b-bc68af5bfa3e.png","https://cdn.nlark.com/yuque/0/2026/png/276041/1784217812315-da9b0d57-524d-4dfc-b0b2-b34b301bf826.png","https://cdn.nlark.com/yuque/0/2026/png/276041/1784217844600-82a8fcf7-e123-4fed-94b6-bc02c28ab54c.png","https://cdn.nlark.com/yuque/0/2026/png/276041/1784217973964-48042171-aaef-4cbc-bcb8-29ff740422e0.png"],"datePublished":"2026-09-14T22:00:00.000Z","dateModified":"2026-09-14T17:19:06.149Z","author":{"@type":"Person","name":"wangyawei"},"publisher":{"@type":"Organization","name":"Hexo","logo":{"@type":"ImageObject","url":"https://wywzixin.github.io/img/logo.svg"}},"description":"你写一个 Agent，想让它能查 GitHub、查数据库、发 Slack——每个工具都得适配一遍。MCP 在中间定了一层协议，把 N×M 的接线变成 N+M。这篇讲清三个角色（Host &#x2F; Client &#x2F; Server）、它为什么分成 JSON-RPC 和传输两层、stdio 和 Streamable HTTP 各自适合什么、一次连接的三步握手，以及工具接进来之后怎么进工具表、工具太多时为什么要"}</script><link rel="canonical" href="https://wywzixin.github.io/agent/mcp-protocol/"><link rel="icon" href="/img/favicon.svg"><style>html,body{background:#f7f7f7}</style><link rel="stylesheet" href="https://use.fontawesome.com/releases/v6.0.0/css/all.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js@11.7.0/styles/atom-one-dark.css"><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Ubuntu:wght@400;600&amp;family=Source+Code+Pro"><link rel="stylesheet" href="/css/default.css"><!--!--><!--!--><!--!--><!--!--><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/cookieconsent@3.1.1/build/cookieconsent.min.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/lightgallery@1.10.0/dist/css/lightgallery.min.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/justifiedGallery@3.8.1/dist/css/justifiedGallery.min.css"><!--!--><!--!--><!--!--><style>.pace{-webkit-pointer-events:none;pointer-events:none;-webkit-user-select:none;-moz-user-select:none;user-select:none}.pace-inactive{display:none}.pace .pace-progress{background:#3273dc;position:fixed;z-index:2000;top:0;right:100%;width:100%;height:2px}</style><script src="https://cdn.jsdelivr.net/npm/pace-js@1.2.4/pace.min.js"></script><!--!--><!--!--><!-- hexo injector head_end start --><script>
+  (function () {
+      function switchTab() {
+          if (!location.hash) {
+            return;
+          }
+
+          const id = '#' + CSS.escape(location.hash.substring(1));
+          const $tabMenu = document.querySelector(`.tabs a[href="${id}"]`);
+          if (!$tabMenu) {
+            return;
+          }
+
+          const $tabMenuContainer = $tabMenu.parentElement.parentElement;
+          Array.from($tabMenuContainer.children).forEach($menu => $menu.classList.remove('is-active'));
+          Array.from($tabMenuContainer.querySelectorAll('a'))
+              .map($menu => document.getElementById($menu.getAttribute("href").substring(1)))
+              .forEach($content => $content.classList.add('is-hidden'));
+
+          if ($tabMenu) {
+              $tabMenu.parentElement.classList.add('is-active');
+          }
+          const $activeTab = document.querySelector(id);
+          if ($activeTab) {
+              $activeTab.classList.remove('is-hidden');
+          }
+      }
+      switchTab();
+      window.addEventListener('hashchange', switchTab, false);
+  })();
+  </script><!-- hexo injector head_end end --><meta name="generator" content="Hexo 7.3.0"></head><body class="is-3-column"><nav class="navbar navbar-main"><div class="container navbar-container"><div class="navbar-brand justify-content-center"><a class="navbar-item navbar-logo" href="/"><img src="/img/logo.svg" alt="Hexo" height="28"></a></div><div class="navbar-menu"><div class="navbar-start"><a class="navbar-item" href="/">首页</a><a class="navbar-item" href="/archives">归档</a><a class="navbar-item" href="/categories">分类</a><a class="navbar-item" href="/tags">标签</a><a class="navbar-item" href="/about">关于</a></div><div class="navbar-end"><a class="navbar-item" target="_blank" rel="noopener" title="Download on GitHub" href="https://github.com/ppoffice/hexo-theme-icarus"><i class="fab fa-github"></i></a><a class="navbar-item search" title="搜索" href="javascript:;"><i class="fas fa-search"></i></a></div></div></div></nav><section class="section"><div class="container"><div class="columns"><div class="column order-2 column-main is-8-tablet is-8-desktop is-6-widescreen"><div class="card"><article class="card-content article" role="article"><div class="article-meta is-size-7 is-uppercase level is-mobile"><div class="level-left"><span class="level-item"><time dateTime="2026-09-14T22:00:00.000Z" title="2026/9/15 06:00:00">2026-09-15</time>发表</span><span class="level-item"><time dateTime="2026-09-14T17:19:06.149Z" title="2026/9/15 01:19:06">2026-09-15</time>更新</span><span class="level-item"><a class="link-muted" href="/categories/agent/">agent</a></span><span class="level-item">36 分钟读完 (大约5406个字)</span></div></div><h1 class="title is-3 is-size-4-mobile">MCP 协议与工具接入</h1><div class="content"><p><strong>MCP（Model Context Protocol，模型上下文协议）是一套开放协议，用于规范 LLM 应用与外部工具之间的连接方式：应用侧实现 MCP 客户端（Client），工具侧实现 MCP 服务端（Server）。</strong></p>
+<p>它的直接收益是：”N 个应用配 M 个工具”所需的 <strong>N×M 段适配代码，收敛为 N+M 段</strong>。</p>
+<p>具体来说：你想让 Agent 能查 GitHub、查数据库、发 Slack，得写三段适配代码（各一套认证、参数格式、错误处理）；再写一个跑在 IDE 里的 Agent，<strong>又是三段，内容几乎一样</strong>；哪天工具那边换个实现，每个 Agent 里都得跟着改一遍——<strong>它们明明在做同一件事。</strong></p>
+<p>MCP 把这两个方向都解开了：换 Agent，工具侧不用动；换工具实现，应用侧不用动。两边甚至可以是不同的人、用不同的语言写的。</p>
+<p>这篇讲这层协议长什么样：分了哪两层、有哪两种传输、一次连接要走哪三步，以及工具接进来之后怎么进到 Agent 的工具表里。</p>
+<span id="more"></span>
+
+<h2 id="1-三个角色：Host、Client、Server"><a href="#1-三个角色：Host、Client、Server" class="headerlink" title="1. 三个角色：Host、Client、Server"></a>1. 三个角色：Host、Client、Server</h2><p>MCP 里只有三个角色，但它们<strong>不是一个进程里的三个东西</strong>：</p>
+<table>
+<thead>
+<tr>
+<th>角色</th>
+<th>是什么</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>Host</strong></td>
+<td>跑着 Agent 的那个程序。管连接，也<strong>决定把哪些工具交给模型</strong></td>
+</tr>
+<tr>
+<td><strong>Client</strong></td>
+<td>Host 内部的一个对象，负责跟<strong>一个</strong> Server 通信</td>
+</tr>
+<tr>
+<td><strong>Server</strong></td>
+<td>真正提供能力的一方。一个 Server 就是一组工具&#x2F;资源的提供者</td>
+</tr>
+</tbody></table>
+<p>最容易搞混的是 Client：<strong>它不是”客户端程序”，而是 Host 里的一个连接对象，而且跟 Server 是一对一的。</strong></p>
+<p>所以”Host 里有一个 Client”这个说法是错的。正确的是：<strong>Host 里有一张 Client 的表</strong>——接了 5 个 Server，就有 5 个 Client 对象，各自管一条连接。</p>
+<p><img src="https://cdn.nlark.com/yuque/0/2026/png/276041/1784216595366-31d8d324-c926-485c-a372-bc37f7bafb88.png"></p>
+<p>为什么要把 Client 单独拆出来，而不是让 Host 直接跟 Server 说话？<strong>因为这样”一个 Server 出问题”的影响范围就被限制在一个 Client 里了</strong>——它的连接断了、超时了、协议对不上，另外四个 Client 不受影响。这个设计在 §7 讲启动流程时还会用到。</p>
+<h2 id="2-两层：消息是一层，怎么送是另一层"><a href="#2-两层：消息是一层，怎么送是另一层" class="headerlink" title="2. 两层：消息是一层，怎么送是另一层"></a>2. 两层：消息是一层，怎么送是另一层</h2><p>MCP 不是一个协议，是<strong>两个叠在一起的协议</strong>：</p>
+<ul>
+<li><strong>数据层</strong>：JSON-RPC 2.0 消息。规定请求、响应、错误各长什么样——<strong>说什么</strong></li>
+<li><strong>传输层</strong>：stdio 或 Streamable HTTP。规定这些消息怎么从这边到那边——<strong>怎么送</strong></li>
+</ul>
+<p>打个比方：<strong>内容是信，传输是邮路。信的内容不变，运输方式可以换。</strong></p>
+<p><img src="https://cdn.nlark.com/yuque/0/2026/png/276041/1784216621817-0750506c-8cab-4202-8e7c-8e6fd205ed3b.png"></p>
+<p>这个分层不是纸面上的——<strong>它是可以真的换的</strong>。同一个工具实现，本机跑的时候用 stdio，部署到服务器上换成 HTTP，<strong>JSON-RPC 那一层一个字都不用改</strong>。</p>
+<h3 id="两边各能提供什么"><a href="#两边各能提供什么" class="headerlink" title="两边各能提供什么"></a>两边各能提供什么</h3><p>协议是双向的：握手时两边都要声明自己的能力。</p>
+<p><img src="https://cdn.nlark.com/yuque/0/2026/png/276041/1784216790720-fead2842-e743-49bb-9e14-08e2d8793077.png"></p>
+<table>
+<thead>
+<tr>
+<th>方向</th>
+<th>能力</th>
+<th>是什么</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Server → Client</td>
+<td><strong>Tools</strong></td>
+<td>模型可以调用的函数（会被 LLM 当成工具列表）</td>
+</tr>
+<tr>
+<td></td>
+<td><strong>Resources</strong></td>
+<td>只读数据（文件、数据库记录），<strong>由应用决定读哪个</strong></td>
+</tr>
+<tr>
+<td></td>
+<td><strong>Prompts</strong></td>
+<td>预置的提示词模板，<strong>由用户显式调用</strong></td>
+</tr>
+<tr>
+<td>Client → Server</td>
+<td><strong>Roots</strong></td>
+<td>告诉 Server——我关心的范围是这些目录</td>
+</tr>
+<tr>
+<td></td>
+<td><strong>Sampling</strong></td>
+<td>Server 反过来请 Host 去调一次模型</td>
+</tr>
+<tr>
+<td></td>
+<td><strong>Elicitation</strong></td>
+<td>Server 反过来找用户要一个输入</td>
+</tr>
+</tbody></table>
+<p>前三个词最容易被当成”三种类型的工具”，其实它们的区别在<strong>谁发起</strong>：</p>
+<ul>
+<li><strong>Tools 是模型主动的</strong> —— 模型决定调哪个</li>
+<li><strong>Resources 是应用主动的</strong> —— 代码决定往上下文里塞什么</li>
+<li><strong>Prompts 是用户主动的</strong> —— 比如斜杠命令，用户点了才用</li>
+</ul>
+<p>记住”发起者不同”这一条，这三个词就分得开了。</p>
+<h2 id="3-只有两种标准传输"><a href="#3-只有两种标准传输" class="headerlink" title="3. 只有两种标准传输"></a>3. 只有两种标准传输</h2><p>截至 2025-11-25 版规范，标准传输<strong>只有两种</strong>：<strong>stdio</strong> 和 <strong>Streamable HTTP</strong>。没有 WebSocket，没有 gRPC，也没有”自定义 TCP”。</p>
+<p>差别只有一句话：<strong>Host 和 Server 之间怎么通信。</strong></p>
+<p><img src="https://cdn.nlark.com/yuque/0/2026/png/276041/1784216824056-6fdeff62-2083-4d88-85b3-8ae00e6681b7.png"></p>
+<p>先说一件容易被忽略的事：<strong>传输是 Host 和 Server 之间的事，跟模型完全无关。</strong> 模型看不到这一层——它只知道有个工具叫 <code>mcp_github_search_issues</code>，这个工具背后是管道还是 HTTP，它既不知道也不需要知道。</p>
+<p><img src="https://cdn.nlark.com/yuque/0/2026/png/276041/1784216875398-24643272-4bc0-41d1-b70c-6f91b085535a.png"></p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>stdio</th>
+<th>Streamable HTTP</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>通信方式</td>
+<td>父子进程的标准输入输出（管道）</td>
+<td>HTTP 请求</td>
+</tr>
+<tr>
+<td>Server 怎么来</td>
+<td>Host 自己拉起子进程</td>
+<td>Server 已经跑在某个 URL 上了</td>
+</tr>
+<tr>
+<td>认证</td>
+<td>不需要——同一个进程树，密钥靠环境变量传</td>
+<td>需要——HTTP 头里带 token</td>
+</tr>
+<tr>
+<td>服务范围</td>
+<td>本机、这一个 Host</td>
+<td>可以服务多个 Host、多台机器</td>
+</tr>
+</tbody></table>
+<p>共同点两条：<strong>都跑 JSON-RPC 2.0，Client 那边的流程一模一样</strong>（下一节那三步对两种传输都成立）。</p>
+<p><img src="https://cdn.nlark.com/yuque/0/2026/png/276041/1784216885139-0f76d758-59e8-4e46-9e14-5f8aaaa22b6b.png"></p>
+<h3 id="stdio：连网络都不需要"><a href="#stdio：连网络都不需要" class="headerlink" title="stdio：连网络都不需要"></a>stdio：连网络都不需要</h3><p>stdio 的 Server 就是一个普通的命令行程序。Host 启动时 <code>spawn</code> 它，然后往它的 stdin 写请求、从它的 stdout 读响应。</p>
+<p><strong>没有端口要占，没有防火墙要开，没有服务发现要做。</strong> 进程起来了工具就能用，Host 退出子进程跟着结束。</p>
+<p><img src="https://cdn.nlark.com/yuque/0/2026/png/276041/1784216904044-48febe9a-d495-422f-905b-1634a196c242.png"></p>
+<p>跟传统的”起个服务、开个端口、Client 连上去”比，省掉的全是运维成本：</p>
+<p><img src="https://cdn.nlark.com/yuque/0/2026/png/276041/1784216923664-c07c40e7-98d3-4fd9-af0c-fa7a141fac82.png"></p>
+<p><strong>启动即用，退出即清理。</strong> 代价是这个 Server 只能被本机这一个 Host 用。</p>
+<p>stdio 有三条 I&#x2F;O 通道，职责<strong>不能混</strong>：</p>
+<table>
+<thead>
+<tr>
+<th>通道</th>
+<th>干什么</th>
+<th>谁看</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>stdin</strong></td>
+<td>Host → Server 的 JSON-RPC 请求</td>
+<td>Server</td>
+</tr>
+<tr>
+<td><strong>stdout</strong></td>
+<td>Server → Host 的 JSON-RPC 响应</td>
+<td>Client 解析</td>
+</tr>
+<tr>
+<td><strong>stderr</strong></td>
+<td>日志、调试信息</td>
+<td>人</td>
+</tr>
+</tbody></table>
+<p><strong>stdout 上只能有 JSON-RPC，一个字符都不能多。</strong></p>
+<p>在 Server 里随手写一句 <code>print(&quot;starting...&quot;)</code>，那行字就会跟 JSON 混在一起，Client 解析直接失败。<strong>这是写 MCP Server 最容易踩的第一个坑</strong>——要打日志，走 stderr。</p>
+<p><img src="https://cdn.nlark.com/yuque/0/2026/png/276041/1784216965715-1f2d999b-bea2-43d4-915f-8bfedaafbf1d.png"></p>
+<h3 id="Streamable-HTTP：一次-POST，两种响应"><a href="#Streamable-HTTP：一次-POST，两种响应" class="headerlink" title="Streamable HTTP：一次 POST，两种响应"></a>Streamable HTTP：一次 POST，两种响应</h3><p>Server 部署在某个 URL 上，Client 往里 POST JSON-RPC 消息。响应有两种形态：</p>
+<ul>
+<li><strong><code>application/json</code></strong> —— 一问一答，普通请求走这条</li>
+<li><strong><code>text/event-stream</code></strong> —— SSE，Server 要分多次往前推（进度通知、长任务）时走这条</li>
+</ul>
+<p>所以请求头里的 <code>Accept</code> 必须<strong>两种都声明</strong>：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">Accept: application/json, text/event-stream</span><br></pre></td></tr></table></figure>
+
+<p>只写一种，Server 想用另一种回你的时候就没得选了。</p>
+<p><img src="https://cdn.nlark.com/yuque/0/2026/png/276041/1784217009660-c17e4bb6-3b68-4383-b3d0-5e0fb0dc78f7.png"></p>
+<h2 id="4-一次连接的三步"><a href="#4-一次连接的三步" class="headerlink" title="4. 一次连接的三步"></a>4. 一次连接的三步</h2><p>两种传输之上，逻辑层的流程是同一套：</p>
+<p><strong><code>initialize</code> → <code>notifications/initialized</code> → <code>tools/list</code> → <code>tools/call</code> × N</strong></p>
+<p>前三步<strong>整个连接只做一次</strong>，第四步重复无数次。</p>
+<p><img src="https://cdn.nlark.com/yuque/0/2026/png/276041/1784217070354-a98fe14f-1d44-4d42-b281-36e1b3ef21b8.png"></p>
+<h3 id="第一步：initialize-握手"><a href="#第一步：initialize-握手" class="headerlink" title="第一步：initialize 握手"></a>第一步：initialize 握手</h3><p>Client 先发请求：</p>
+<figure class="highlight json"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line"><span class="punctuation">&#123;</span></span><br><span class="line">  <span class="attr">&quot;jsonrpc&quot;</span><span class="punctuation">:</span> <span class="string">&quot;2.0&quot;</span><span class="punctuation">,</span></span><br><span class="line">  <span class="attr">&quot;id&quot;</span><span class="punctuation">:</span> <span class="number">1</span><span class="punctuation">,</span></span><br><span class="line">  <span class="attr">&quot;method&quot;</span><span class="punctuation">:</span> <span class="string">&quot;initialize&quot;</span><span class="punctuation">,</span></span><br><span class="line">  <span class="attr">&quot;params&quot;</span><span class="punctuation">:</span> <span class="punctuation">&#123;</span></span><br><span class="line">    <span class="attr">&quot;protocolVersion&quot;</span><span class="punctuation">:</span> <span class="string">&quot;2025-11-25&quot;</span><span class="punctuation">,</span></span><br><span class="line">    <span class="attr">&quot;capabilities&quot;</span><span class="punctuation">:</span> <span class="punctuation">&#123;</span></span><br><span class="line">      <span class="attr">&quot;roots&quot;</span><span class="punctuation">:</span> <span class="punctuation">&#123;</span> <span class="attr">&quot;listChanged&quot;</span><span class="punctuation">:</span> <span class="literal"><span class="keyword">true</span></span> <span class="punctuation">&#125;</span><span class="punctuation">,</span></span><br><span class="line">      <span class="attr">&quot;sampling&quot;</span><span class="punctuation">:</span> <span class="punctuation">&#123;</span><span class="punctuation">&#125;</span></span><br><span class="line">    <span class="punctuation">&#125;</span><span class="punctuation">,</span></span><br><span class="line">    <span class="attr">&quot;clientInfo&quot;</span><span class="punctuation">:</span> <span class="punctuation">&#123;</span> <span class="attr">&quot;name&quot;</span><span class="punctuation">:</span> <span class="string">&quot;my-agent&quot;</span><span class="punctuation">,</span> <span class="attr">&quot;version&quot;</span><span class="punctuation">:</span> <span class="string">&quot;1.0.0&quot;</span> <span class="punctuation">&#125;</span></span><br><span class="line">  <span class="punctuation">&#125;</span></span><br><span class="line"><span class="punctuation">&#125;</span></span><br></pre></td></tr></table></figure>
+
+<p>Server 回：</p>
+<figure class="highlight json"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><span class="line"><span class="punctuation">&#123;</span></span><br><span class="line">  <span class="attr">&quot;jsonrpc&quot;</span><span class="punctuation">:</span> <span class="string">&quot;2.0&quot;</span><span class="punctuation">,</span></span><br><span class="line">  <span class="attr">&quot;id&quot;</span><span class="punctuation">:</span> <span class="number">1</span><span class="punctuation">,</span></span><br><span class="line">  <span class="attr">&quot;result&quot;</span><span class="punctuation">:</span> <span class="punctuation">&#123;</span></span><br><span class="line">    <span class="attr">&quot;protocolVersion&quot;</span><span class="punctuation">:</span> <span class="string">&quot;2025-11-25&quot;</span><span class="punctuation">,</span></span><br><span class="line">    <span class="attr">&quot;capabilities&quot;</span><span class="punctuation">:</span> <span class="punctuation">&#123;</span></span><br><span class="line">      <span class="attr">&quot;tools&quot;</span><span class="punctuation">:</span> <span class="punctuation">&#123;</span> <span class="attr">&quot;listChanged&quot;</span><span class="punctuation">:</span> <span class="literal"><span class="keyword">true</span></span> <span class="punctuation">&#125;</span><span class="punctuation">,</span></span><br><span class="line">      <span class="attr">&quot;resources&quot;</span><span class="punctuation">:</span> <span class="punctuation">&#123;</span><span class="punctuation">&#125;</span></span><br><span class="line">    <span class="punctuation">&#125;</span><span class="punctuation">,</span></span><br><span class="line">    <span class="attr">&quot;serverInfo&quot;</span><span class="punctuation">:</span> <span class="punctuation">&#123;</span> <span class="attr">&quot;name&quot;</span><span class="punctuation">:</span> <span class="string">&quot;github-mcp-server&quot;</span><span class="punctuation">,</span> <span class="attr">&quot;version&quot;</span><span class="punctuation">:</span> <span class="string">&quot;0.6.2&quot;</span> <span class="punctuation">&#125;</span></span><br><span class="line">  <span class="punctuation">&#125;</span></span><br><span class="line"><span class="punctuation">&#125;</span></span><br></pre></td></tr></table></figure>
+
+<p>两边交换的是三样东西：</p>
+<ul>
+<li><strong><code>protocolVersion</code></strong> —— Client 说”我想用 2025-11-25”。如果 Server 不支持，它回一个自己能支持的版本，<strong>以 Server 的为准</strong></li>
+<li><strong><code>capabilities</code></strong> —— Server 说”我提供 tools 和 resources，不提供 prompts”；Client 说”我支持 roots 和 sampling”。<strong>这是能力协商：之后双方只会调用对方声明过的东西</strong></li>
+<li><strong><code>clientInfo</code> &#x2F; <code>serverInfo</code></strong> —— 名字和版本，出错的时候拿来对账</li>
+</ul>
+<p><img src="https://cdn.nlark.com/yuque/0/2026/png/276041/1784217168185-634de730-d0c9-4641-9f16-7dd3bef4264d.png"></p>
+<p>握手响应回来后，Client 还要再发一条通知：</p>
+<figure class="highlight json"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="punctuation">&#123;</span> <span class="attr">&quot;jsonrpc&quot;</span><span class="punctuation">:</span> <span class="string">&quot;2.0&quot;</span><span class="punctuation">,</span> <span class="attr">&quot;method&quot;</span><span class="punctuation">:</span> <span class="string">&quot;notifications/initialized&quot;</span> <span class="punctuation">&#125;</span></span><br></pre></td></tr></table></figure>
+
+<p>它<strong>没有 <code>id</code></strong>。在 JSON-RPC 里，<strong>没有 id 的消息就是通知</strong>——对方不需要回。</p>
+<p>为什么要多这一条？因为 <code>initialize</code> 的响应发出去时，Server 并不知道 Client 收好了没有。<strong>这条通知是一个明确的”我这边准备好了，可以开始干活”。</strong></p>
+<p><img src="https://cdn.nlark.com/yuque/0/2026/png/276041/1784217206609-cc713356-7e6c-40c7-acf4-631aa925ac2b.png"></p>
+<h3 id="第二步：tools-list——把工具清单拿回来"><a href="#第二步：tools-list——把工具清单拿回来" class="headerlink" title="第二步：tools&#x2F;list——把工具清单拿回来"></a>第二步：tools&#x2F;list——把工具清单拿回来</h3><figure class="highlight json"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="punctuation">&#123;</span> <span class="attr">&quot;jsonrpc&quot;</span><span class="punctuation">:</span> <span class="string">&quot;2.0&quot;</span><span class="punctuation">,</span> <span class="attr">&quot;id&quot;</span><span class="punctuation">:</span> <span class="number">2</span><span class="punctuation">,</span> <span class="attr">&quot;method&quot;</span><span class="punctuation">:</span> <span class="string">&quot;tools/list&quot;</span><span class="punctuation">,</span> <span class="attr">&quot;params&quot;</span><span class="punctuation">:</span> <span class="punctuation">&#123;</span><span class="punctuation">&#125;</span> <span class="punctuation">&#125;</span></span><br></pre></td></tr></table></figure>
+
+<figure class="highlight json"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br></pre></td><td class="code"><pre><span class="line"><span class="punctuation">&#123;</span></span><br><span class="line">  <span class="attr">&quot;jsonrpc&quot;</span><span class="punctuation">:</span> <span class="string">&quot;2.0&quot;</span><span class="punctuation">,</span></span><br><span class="line">  <span class="attr">&quot;id&quot;</span><span class="punctuation">:</span> <span class="number">2</span><span class="punctuation">,</span></span><br><span class="line">  <span class="attr">&quot;result&quot;</span><span class="punctuation">:</span> <span class="punctuation">&#123;</span></span><br><span class="line">    <span class="attr">&quot;tools&quot;</span><span class="punctuation">:</span> <span class="punctuation">[</span></span><br><span class="line">      <span class="punctuation">&#123;</span></span><br><span class="line">        <span class="attr">&quot;name&quot;</span><span class="punctuation">:</span> <span class="string">&quot;search_issues&quot;</span><span class="punctuation">,</span></span><br><span class="line">        <span class="attr">&quot;description&quot;</span><span class="punctuation">:</span> <span class="string">&quot;在仓库里搜索 issue&quot;</span><span class="punctuation">,</span></span><br><span class="line">        <span class="attr">&quot;inputSchema&quot;</span><span class="punctuation">:</span> <span class="punctuation">&#123;</span></span><br><span class="line">          <span class="attr">&quot;type&quot;</span><span class="punctuation">:</span> <span class="string">&quot;object&quot;</span><span class="punctuation">,</span></span><br><span class="line">          <span class="attr">&quot;properties&quot;</span><span class="punctuation">:</span> <span class="punctuation">&#123;</span> <span class="attr">&quot;query&quot;</span><span class="punctuation">:</span> <span class="punctuation">&#123;</span> <span class="attr">&quot;type&quot;</span><span class="punctuation">:</span> <span class="string">&quot;string&quot;</span> <span class="punctuation">&#125;</span> <span class="punctuation">&#125;</span><span class="punctuation">,</span></span><br><span class="line">          <span class="attr">&quot;required&quot;</span><span class="punctuation">:</span> <span class="punctuation">[</span><span class="string">&quot;query&quot;</span><span class="punctuation">]</span></span><br><span class="line">        <span class="punctuation">&#125;</span></span><br><span class="line">      <span class="punctuation">&#125;</span></span><br><span class="line">    <span class="punctuation">]</span></span><br><span class="line">  <span class="punctuation">&#125;</span></span><br><span class="line"><span class="punctuation">&#125;</span></span><br></pre></td></tr></table></figure>
+
+<p><code>inputSchema</code> 就是一份 JSON Schema——<strong>跟 LLM API 里那份是同一个东西</strong>。叫法是各家的：Claude 是 <code>input_schema</code>，OpenAI 是 <code>parameters</code>，MCP 是 <code>inputSchema</code>。</p>
+<p>这里只列了 <code>tools</code>。如果 Server 还提供 resources 和 prompts，另有 <code>resources/list</code> 和 <code>prompts/list</code>，形状一样。</p>
+<p><img src="https://cdn.nlark.com/yuque/0/2026/png/276041/1784217249151-6e6ffdf4-2827-45cd-b3d8-69319a3ee695.png"></p>
+<h3 id="第三步：tools-call——真正调用"><a href="#第三步：tools-call——真正调用" class="headerlink" title="第三步：tools&#x2F;call——真正调用"></a>第三步：tools&#x2F;call——真正调用</h3><figure class="highlight json"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line"><span class="punctuation">&#123;</span></span><br><span class="line">  <span class="attr">&quot;jsonrpc&quot;</span><span class="punctuation">:</span> <span class="string">&quot;2.0&quot;</span><span class="punctuation">,</span></span><br><span class="line">  <span class="attr">&quot;id&quot;</span><span class="punctuation">:</span> <span class="number">3</span><span class="punctuation">,</span></span><br><span class="line">  <span class="attr">&quot;method&quot;</span><span class="punctuation">:</span> <span class="string">&quot;tools/call&quot;</span><span class="punctuation">,</span></span><br><span class="line">  <span class="attr">&quot;params&quot;</span><span class="punctuation">:</span> <span class="punctuation">&#123;</span></span><br><span class="line">    <span class="attr">&quot;name&quot;</span><span class="punctuation">:</span> <span class="string">&quot;search_issues&quot;</span><span class="punctuation">,</span></span><br><span class="line">    <span class="attr">&quot;arguments&quot;</span><span class="punctuation">:</span> <span class="punctuation">&#123;</span> <span class="attr">&quot;query&quot;</span><span class="punctuation">:</span> <span class="string">&quot;memory leak&quot;</span> <span class="punctuation">&#125;</span></span><br><span class="line">  <span class="punctuation">&#125;</span></span><br><span class="line"><span class="punctuation">&#125;</span></span><br></pre></td></tr></table></figure>
+
+<figure class="highlight json"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line"><span class="punctuation">&#123;</span></span><br><span class="line">  <span class="attr">&quot;jsonrpc&quot;</span><span class="punctuation">:</span> <span class="string">&quot;2.0&quot;</span><span class="punctuation">,</span></span><br><span class="line">  <span class="attr">&quot;id&quot;</span><span class="punctuation">:</span> <span class="number">3</span><span class="punctuation">,</span></span><br><span class="line">  <span class="attr">&quot;result&quot;</span><span class="punctuation">:</span> <span class="punctuation">&#123;</span></span><br><span class="line">    <span class="attr">&quot;content&quot;</span><span class="punctuation">:</span> <span class="punctuation">[</span></span><br><span class="line">      <span class="punctuation">&#123;</span> <span class="attr">&quot;type&quot;</span><span class="punctuation">:</span> <span class="string">&quot;text&quot;</span><span class="punctuation">,</span> <span class="attr">&quot;text&quot;</span><span class="punctuation">:</span> <span class="string">&quot;找到 3 个相关 issue：...&quot;</span> <span class="punctuation">&#125;</span></span><br><span class="line">    <span class="punctuation">]</span><span class="punctuation">,</span></span><br><span class="line">    <span class="attr">&quot;isError&quot;</span><span class="punctuation">:</span> <span class="literal"><span class="keyword">false</span></span></span><br><span class="line">  <span class="punctuation">&#125;</span></span><br><span class="line"><span class="punctuation">&#125;</span></span><br></pre></td></tr></table></figure>
+
+<p>两个细节值得停一下：</p>
+<p><strong>一、参数是 <code>arguments</code>，一个对象。</strong> 模型给的参数直接放进去，不用自己 <code>json.loads</code>。</p>
+<p><strong>二、结果不是字符串，是一个 <code>content</code> 数组。</strong> 文本、图片、音频都能放——<strong>因为工具的输出本来就不一定是纯文本</strong>。截图、图表、文件引用都要能回。这跟 <code>tool_result</code> 的 <code>content</code> 是同一个思路。</p>
+<p>还有 <code>isError</code> 这个字段：</p>
+<p><strong>工具执行失败时，Server 回的是 <code>&quot;isError&quot;: true</code> 加一段错误说明，而不是一个 JSON-RPC 错误。</strong> 道理和<a href="/agent/react-agent-loop/">上一篇</a> §4 一样——<strong>JSON-RPC 错误是给程序看的</strong>（协议层出问题了，比如方法名写错），<strong><code>isError</code> 是给模型看的</strong>（工具跑了，但没跑成）。后者模型有机会自己纠正，所以必须让它看到。</p>
+<p><img src="https://cdn.nlark.com/yuque/0/2026/png/276041/1784217266560-069da23a-8219-4d79-abd3-6bf15b503011.png"></p>
+<p><img src="https://cdn.nlark.com/yuque/0/2026/png/276041/1784217284906-7b9badf2-98fc-4b25-be25-7e5ebe753996.png"></p>
+<p>把顺序串起来，一次完整会话就是：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line">initialize                  ← 握手：版本 + 能力 + 身份</span><br><span class="line">    ↓</span><br><span class="line">notifications/initialized   ← 我准备好了</span><br><span class="line">    ↓</span><br><span class="line">tools/list                  ← 拿工具清单</span><br><span class="line">    ↓</span><br><span class="line">tools/call                  ← 调工具</span><br><span class="line">tools/call</span><br><span class="line">tools/call ...</span><br></pre></td></tr></table></figure>
+
+<p><img src="https://cdn.nlark.com/yuque/0/2026/png/276041/1784217317776-f863e285-d26f-4663-8c89-21bc80f9ee39.png"></p>
+<h3 id="一个版本提示"><a href="#一个版本提示" class="headerlink" title="一个版本提示"></a>一个版本提示</h3><p><strong>上面这套握手，在 2026-07-28 那版规范里被整个去掉了。</strong></p>
+<p>那一版取消了 <code>initialize</code> &#x2F; <code>notifications/initialized</code>，改成按需调用 <code>server/discover</code> 查能力；协议版本、客户端身份这些信息改成<strong>跟着每一个请求走</strong>（放在 <code>_meta</code> 里）——也就是连接不再有”状态”。同时 Roots、Sampling、Logging 三个能力被标记为废弃。</p>
+<p><strong>这篇按 2025-11-25 讲</strong>，原因是现在在跑的 Server 绝大多数还是这一版，而规范给废弃留了至少 12 个月的窗口。看别人的代码时如果只看到 <code>server/discover</code> 没看到 <code>initialize</code>，那就是新版的写法。</p>
+<h2 id="5-请求和响应怎么配对"><a href="#5-请求和响应怎么配对" class="headerlink" title="5. 请求和响应怎么配对"></a>5. 请求和响应怎么配对</h2><p>上面写的是”一问一答”的顺序版。真实实现里，<strong>响应是可能乱序回来的</strong>——尤其用 HTTP 并发调三个工具的时候。</p>
+<p>Client 的做法是一张<strong>待处理表</strong>：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br></pre></td><td class="code"><pre><span class="line">pending = &#123;&#125;   <span class="comment"># id → 等待这个响应的队列</span></span><br><span class="line"></span><br><span class="line"><span class="keyword">async</span> <span class="keyword">def</span> <span class="title function_">request</span>(<span class="params">method, params</span>):</span><br><span class="line">    msg_id = next_id()</span><br><span class="line">    chan = asyncio.Queue()</span><br><span class="line">    pending[msg_id] = chan              <span class="comment"># 先把坑占上，再发</span></span><br><span class="line">    <span class="keyword">await</span> transport.send(&#123;</span><br><span class="line">        <span class="string">&quot;jsonrpc&quot;</span>: <span class="string">&quot;2.0&quot;</span>, <span class="string">&quot;id&quot;</span>: msg_id, <span class="string">&quot;method&quot;</span>: method, <span class="string">&quot;params&quot;</span>: params</span><br><span class="line">    &#125;)</span><br><span class="line">    <span class="keyword">return</span> <span class="keyword">await</span> chan.get()             <span class="comment"># 等这个 id 的响应</span></span><br><span class="line"></span><br><span class="line"><span class="keyword">async</span> <span class="keyword">def</span> <span class="title function_">read_loop</span>():</span><br><span class="line">    <span class="keyword">async</span> <span class="keyword">for</span> msg <span class="keyword">in</span> transport.receive():</span><br><span class="line">        <span class="keyword">if</span> <span class="string">&quot;id&quot;</span> <span class="keyword">in</span> msg:                 <span class="comment"># 是响应</span></span><br><span class="line">            chan = pending.pop(msg[<span class="string">&quot;id&quot;</span>], <span class="literal">None</span>)</span><br><span class="line">            <span class="keyword">if</span> chan:</span><br><span class="line">                chan.put_nowait(msg)    <span class="comment"># 按 id 派发</span></span><br><span class="line">        <span class="keyword">else</span>:                           <span class="comment"># 是通知</span></span><br><span class="line">            handle_notification(msg)</span><br></pre></td></tr></table></figure>
+
+<p>三个要点：</p>
+<ul>
+<li><strong>请求发出前先把 <code>id → 队列</code> 记下来。</strong> 不能等响应回来才建——响应比登记快的时候，消息就丢了</li>
+<li><strong>派发靠 <code>id</code>，不靠到达顺序。</strong> 谁先回来不影响谁是谁</li>
+<li><strong>没有 <code>id</code> 的消息是通知</strong>，走另一条路。它可能是 Server 主动推的进度更新，也可能是它在用 Sampling 反过来请求 Host 调模型</li>
+</ul>
+<p><img src="https://cdn.nlark.com/yuque/0/2026/png/276041/1784217405630-c3d5a60d-20d7-4203-bb3b-d68116257721.png"></p>
+<h2 id="6-工具接进来之后：注册到同一张工具表"><a href="#6-工具接进来之后：注册到同一张工具表" class="headerlink" title="6. 工具接进来之后：注册到同一张工具表"></a>6. 工具接进来之后：注册到同一张工具表</h2><p><code>tools/list</code> 拿回来的东西，接下来要做一件事：<strong>包装成本地工具，注册进 Agent 自己的工具表。</strong></p>
+<p>转换很轻——<code>inputSchema</code> 和 Claude 的 <code>input_schema</code> 基本一一对应，改个字段名就行。注册完之后，工具表里会同时躺着两类工具：</p>
+<table>
+<thead>
+<tr>
+<th>来源</th>
+<th>名字</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>内置</td>
+<td><code>ReadFile</code> &#x2F; <code>Bash</code> &#x2F; <code>Grep</code></td>
+</tr>
+<tr>
+<td>MCP（github Server）</td>
+<td><code>mcp_github_search_issues</code></td>
+</tr>
+<tr>
+<td>MCP（db Server）</td>
+<td><code>mcp_db_query</code></td>
+</tr>
+<tr>
+<td>MCP（slack Server）</td>
+<td><code>mcp_slack_send</code></td>
+</tr>
+</tbody></table>
+<p><strong>加前缀是为了防重名。</strong> 两个 Server 各提供一个叫 <code>search</code> 的工具，前缀一加就分得开了——顺便也告诉模型”这个工具来自哪个 Server”。</p>
+<p><img src="https://cdn.nlark.com/yuque/0/2026/png/276041/1784217447526-bf8060a8-1f08-4ce8-9c0e-836b5c114dc2.png"></p>
+<p><strong>对 Agent 来说，这两类工具没有区别。</strong> Agent Loop 那一层完全不知道 <code>mcp_github_search_issues</code> 背后是一根管道、一个子进程，还是一个大洋彼岸的 HTTP 服务——它只是拿到一个名字和一份 schema，执行，拿结果。</p>
+<p><strong>这正是 MCP 想要的效果：把”工具从哪来”这件事，挡在工具表以下。</strong></p>
+<p>工具表对外只需要一个取 schema 的方法：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">tools = <span class="variable language_">self</span>.registry.get_all_schemas(<span class="variable language_">self</span>.protocol)</span><br></pre></td></tr></table></figure>
+
+<p><code>protocol</code> 是”这份 schema 给谁用”——Claude 一套形状，别的供应商另一套。<strong>同一个工具表，为不同供应商翻译成不同格式，这个转换只在这一个地方做。</strong></p>
+<p>这个方法内部除了遍历和转换，还有两个跳过条件：<code>disabled</code> 的（被用户关掉的），以及 <strong><code>deferred</code> 且还没被 <code>discovered</code> 的</strong>。第二个是延迟加载用的，§8 展开。</p>
+<p><img src="https://cdn.nlark.com/yuque/0/2026/png/276041/1784870333532-4e0aa914-33d0-4bef-bce0-59e8433a3af7.png"></p>
+<h2 id="7-配置与启动"><a href="#7-配置与启动" class="headerlink" title="7. 配置与启动"></a>7. 配置与启动</h2><p>配置差不多长这样：</p>
+<figure class="highlight yaml"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line"><span class="attr">mcp_servers:</span></span><br><span class="line">  <span class="comment"># stdio：有 command 字段 → 启动子进程，走管道</span></span><br><span class="line">  <span class="attr">github:</span></span><br><span class="line">    <span class="attr">command:</span> <span class="string">&quot;npx&quot;</span></span><br><span class="line">    <span class="attr">args:</span> [<span class="string">&quot;-y&quot;</span>, <span class="string">&quot;@modelcontextprotocol/server-github&quot;</span>]</span><br><span class="line">    <span class="attr">env:</span></span><br><span class="line">      <span class="attr">GITHUB_TOKEN:</span> <span class="string">&quot;$&#123;GITHUB_TOKEN&#125;&quot;</span></span><br><span class="line"></span><br><span class="line">  <span class="comment"># Streamable HTTP：有 url 字段 → 发 HTTP 请求</span></span><br><span class="line">  <span class="attr">remote-tool:</span></span><br><span class="line">    <span class="attr">url:</span> <span class="string">&quot;https://api.example.com/mcp&quot;</span></span><br><span class="line">    <span class="attr">headers:</span></span><br><span class="line">      <span class="attr">Authorization:</span> <span class="string">&quot;Bearer $&#123;API_TOKEN&#125;&quot;</span></span><br></pre></td></tr></table></figure>
+
+<p><strong>用哪种传输，判据就一条：有 <code>command</code> 是 stdio，有 <code>url</code> 是 HTTP。</strong> 不需要另写一个 <code>type</code> 字段——这两个字段天然互斥，写不出”两个都有”的配置。</p>
+<p>配置分两级，<strong>项目级覆盖用户级</strong>：</p>
+<table>
+<thead>
+<tr>
+<th>级别</th>
+<th>位置</th>
+<th>放什么</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>用户级</td>
+<td>家目录下的全局配置</td>
+<td>你个人常用的 Server、个人 token</td>
+</tr>
+<tr>
+<td>项目级</td>
+<td>项目根目录下的配置文件</td>
+<td>只有这个项目需要的 Server</td>
+</tr>
+</tbody></table>
+<p>合并规则是<strong>按 Server 名字逐项覆盖</strong>：项目级里同名的那一项整个替掉用户级的，其余的用户级项保留。</p>
+<p>这样团队可以把”这个项目要连哪个数据库”写进仓库，而每个人自己的 token 留在本地。<strong><code>$&#123;GITHUB_TOKEN&#125;</code> 这种写法是关键：配置文件进仓库，密钥不进仓库。</strong></p>
+<p><img src="https://cdn.nlark.com/yuque/0/2026/png/276041/1784217536245-1ee614f2-12b3-4b9c-b682-3af98c800ad5.png"></p>
+<h3 id="启动时按顺序发生的事"><a href="#启动时按顺序发生的事" class="headerlink" title="启动时按顺序发生的事"></a>启动时按顺序发生的事</h3><ol>
+<li>读两级配置，合并出最终的 Server 列表</li>
+<li>每个 Server 看它是 <code>command</code> 还是 <code>url</code>，决定用哪种 transport</li>
+<li><strong>后台</strong>建立连接（不阻塞主流程）</li>
+<li><code>initialize</code> 握手</li>
+<li><code>tools/list</code> 拉工具清单</li>
+<li>包装成本地工具，注册进工具表</li>
+<li>Agent Loop 正常跑——取工具表时，MCP 工具已经在里面了</li>
+<li>模型要调某个 MCP 工具 → 转成 <code>tools/call</code> 发过去</li>
+<li>结果转回 <code>tool_result</code> 塞回 messages</li>
+</ol>
+<p><img src="https://cdn.nlark.com/yuque/0/2026/png/276041/1784217658291-6a3a8532-104b-467f-af97-332f1d247696.png"></p>
+<p>其中两处工程上的选择值得单独说。</p>
+<p><strong>一、连接是后台做的，启动不等它。</strong> 某个 Server 起不来（网络不通、<code>npx</code> 装不上、命令不存在），<strong>只打一条警告，不阻止启动</strong>——其他工具照常可用。<strong>一个 Server 挂掉，不该让整个 Agent 用不了。</strong> 这也是 §1 把 Client 拆成一对象一连接的好处：坏的只坏那一个。</p>
+<p><strong>二、连接是复用的。</strong> 握手和 <code>tools/list</code> 一个进程里只做一次，之后一直用同一条连接。不是每次调工具都重连——那样每个调用都要多两个往返。</p>
+<p><img src="https://cdn.nlark.com/yuque/0/2026/png/276041/1784217740349-90f01799-399d-4059-afd8-d4f2654f615e.png"></p>
+<p>顺带一提，这个”启动时后台连上所有 Server”的做法，主流 Coding Agent 基本都是这么干的——因为它对用户来说延迟最低：等你打完第一句话，工具早就在了。</p>
+<p><img src="https://cdn.nlark.com/yuque/0/2026/png/276041/1784217754387-28539b35-685b-4dd7-a05b-bc68af5bfa3e.png"></p>
+<h2 id="8-工具太多：延迟加载"><a href="#8-工具太多：延迟加载" class="headerlink" title="8. 工具太多：延迟加载"></a>8. 工具太多：延迟加载</h2><p>接 10 个 Server 就是几百个工具，而<strong>工具定义本身就要吃掉上下文</strong>：</p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>工具定义占的 token</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>80 个工具全量塞进 <code>tools</code></td>
+<td>约 15,000</td>
+</tr>
+<tr>
+<td>只塞核心工具 + 一个检索工具</td>
+<td>约 1,000</td>
+</tr>
+</tbody></table>
+<p><img src="https://cdn.nlark.com/yuque/0/2026/png/276041/1784217812315-da9b0d57-524d-4dfc-b0b2-b34b301bf826.png"></p>
+<p>麻烦的地方在于，<strong><code>tools</code> 是每一轮请求都要整份发出去的</strong>（<a href="/agent/react-agent-loop/">上一篇</a> §5：API 无状态，<code>messages</code> 只增不减、每轮整个发一遍，<code>tools</code> 也在里面）。15,000 token 的固定开销乘上几十轮——<strong>活还没开始干，成本已经花掉一大截。</strong></p>
+<p>比钱更麻烦的是<strong>效果</strong>：几百个工具一次摆给模型，选错工具的概率明显上升。</p>
+<p>做法是把它们<strong>延迟加载</strong>，分四步：</p>
+<ol>
+<li><strong>注册时就标记成”延迟”的</strong>——MCP 工具默认都算这一类。因为几百个工具里，一次任务真正会用到的一般就那么几个</li>
+<li><strong>生成工具列表时跳过它们的完整 schema</strong>，只在 system-reminder 里<strong>列个名字</strong>。模型知道”有这么个东西存在”，但不用付完整定义的 token</li>
+<li><strong>模型需要的时候，调一个叫 <code>ToolSearch</code> 的工具</strong>把完整定义拉出来</li>
+<li><strong>Registry 返回 schema，同时把它标记为「已发现」</strong>——从下一轮起，它就跟普通工具一样出现在 <code>tools</code> 里了</li>
+</ol>
+<p><img src="https://cdn.nlark.com/yuque/0/2026/png/276041/1784217844600-82a8fcf7-e123-4fed-94b6-bc02c28ab54c.png"></p>
+<p>两轮下来的样子：</p>
+<ul>
+<li><strong>第 1 轮</strong>：<code>tools</code> 里只有 7 个核心工具 + <code>ToolSearch</code>，system-reminder 里挂着 74 个工具名。模型看到里面有 Prometheus 相关的名字，调 <code>ToolSearch(&quot;prometheus&quot;)</code>；本地把它标记为已发现</li>
+<li><strong>第 2 轮</strong>：<code>tools</code> 里多了一个 <code>query_prometheus</code>，模型这一轮就能直接调它了</li>
+</ul>
+<p><img src="https://cdn.nlark.com/yuque/0/2026/png/276041/1784217973964-48042171-aaef-4cbc-bcb8-29ff740422e0.png"></p>
+<p><strong>代价是最坏情况多花一轮。</strong> 模型得先”搜”再”用”，多一次往返。</p>
+<p>所以核心工具（读文件、跑命令、搜索）不该延迟——<strong>它们每轮都在用，延迟了等于每轮都多一轮</strong>，那就本末倒置了。</p>
+<h2 id="9-小结"><a href="#9-小结" class="headerlink" title="9. 小结"></a>9. 小结</h2><p><strong>一、MCP 解决的是 N×M 的接线问题。</strong> 三个角色：<strong>Host 是程序，Client 是 Host 里的连接对象（跟 Server 一对一），Server 是能力提供方。</strong></p>
+<p><strong>二、它分两层：JSON-RPC 2.0 管”说什么”，stdio &#x2F; Streamable HTTP 管”怎么送”。</strong> 换传输，上层逻辑不变。</p>
+<p><strong>三、stdio 不需要端口和认证，代价是本机专用。</strong> 三条 I&#x2F;O 通道职责不能混——<strong>stdout 上只能有 JSON-RPC</strong>。Streamable HTTP 的 <code>Accept</code> 要<strong>同时</strong>声明 <code>application/json</code> 和 <code>text/event-stream</code>。</p>
+<p><strong>四、一次连接三步：<code>initialize</code> → <code>notifications/initialized</code> → <code>tools/list</code>，之后 <code>tools/call</code> 重复 N 次。</strong> 前三步只做一次。握手协商的是版本、能力、身份三样东西。</p>
+<p><strong>五、MCP 工具和内置工具注册进同一张工具表</strong>，加 Server 名前缀防重名，对 Agent Loop 完全透明。连接后台建立、失败只警告——<strong>一个 Server 挂掉不该拖垮整个 Agent。</strong></p>
+<p><strong>六、工具多的时候要延迟加载</strong>：默认只给名字，用 <code>ToolSearch</code> 按需拉完整定义。省 token，也提高选对工具的概率；代价是最坏情况多一轮。</p>
+<h2 id="参考"><a href="#参考" class="headerlink" title="参考"></a>参考</h2><ul>
+<li>MCP 官方规范（2025-11-25）：<a target="_blank" rel="noopener" href="https://modelcontextprotocol.io/specification/2025-11-25">https://modelcontextprotocol.io/specification/2025-11-25</a></li>
+<li>生命周期（<code>initialize</code> 握手）：<a target="_blank" rel="noopener" href="https://modelcontextprotocol.io/specification/2025-11-25/basic/lifecycle">https://modelcontextprotocol.io/specification/2025-11-25/basic/lifecycle</a></li>
+<li>传输（stdio &#x2F; Streamable HTTP）：<a target="_blank" rel="noopener" href="https://modelcontextprotocol.io/specification/2025-11-25/basic/transports">https://modelcontextprotocol.io/specification/2025-11-25/basic/transports</a></li>
+<li>2026-07-28 变更（移除握手、<code>server/discover</code>、废弃 Roots &#x2F; Sampling &#x2F; Logging）：<a target="_blank" rel="noopener" href="https://modelcontextprotocol.io/specification/2026-07-28/changelog">https://modelcontextprotocol.io/specification/2026-07-28/changelog</a></li>
+<li>上一篇：ReAct 与 Agent Loop —— <a href="https://wywzixin.github.io/agent/react-agent-loop/">https://wywzixin.github.io/agent/react-agent-loop/</a></li>
+<li>LLM 请求与流式响应 —— <a href="https://wywzixin.github.io/agent/llm-request-streaming/">https://wywzixin.github.io/agent/llm-request-streaming/</a></li>
+</ul>
+</div><div class="article-licensing box"><div class="licensing-title"><p>MCP 协议与工具接入</p><p><a href="https://wywzixin.github.io/agent/mcp-protocol/">https://wywzixin.github.io/agent/mcp-protocol/</a></p></div><div class="licensing-meta level is-mobile"><div class="level-left"><div class="level-item is-narrow"><div><h6>作者</h6><p>wangyawei</p></div></div><div class="level-item is-narrow"><div><h6>发布于</h6><p>2026-09-15</p></div></div><div class="level-item is-narrow"><div><h6>更新于</h6><p>2026-09-15</p></div></div><div class="level-item is-narrow"><div><h6>许可协议</h6><p><a class="icons" rel="noopener" target="_blank" title="Creative Commons" href="https://creativecommons.org/"><i class="icon fab fa-creative-commons"></i></a><a class="icons" rel="noopener" target="_blank" title="Attribution" href="https://creativecommons.org/licenses/by/4.0/"><i class="icon fab fa-creative-commons-by"></i></a><a class="icons" rel="noopener" target="_blank" title="Noncommercial" href="https://creativecommons.org/licenses/by-nc/4.0/"><i class="icon fab fa-creative-commons-nc"></i></a></p></div></div></div></div></div><div class="article-tags is-size-7 mb-4"><span class="mr-2">#</span><a class="link-muted mr-2" rel="tag" href="/tags/agent/">agent</a><a class="link-muted mr-2" rel="tag" href="/tags/%E5%B7%A5%E5%85%B7%E8%B0%83%E7%94%A8/">工具调用</a><a class="link-muted mr-2" rel="tag" href="/tags/MCP/">MCP</a></div><!--!--></article></div><!--!--><nav class="post-navigation mt-4 level is-mobile"><div class="level-start"><a class="article-nav-prev level level-item link-muted" href="/agent/react-agent-loop/"><i class="level-item fas fa-chevron-left"></i><span class="level-item">ReAct 与 Agent Loop</span></a></div><div class="level-end"><a class="article-nav-next level level-item link-muted" href="/agent/function-calling/"><span class="level-item">Function Calling介绍</span><i class="level-item fas fa-chevron-right"></i></a></div></nav><!--!--></div><div class="column column-left is-4-tablet is-4-desktop is-3-widescreen  order-1"><div class="card widget" data-type="profile"><div class="card-content"><nav class="level"><div class="level-item has-text-centered flex-shrink-1"><div><figure class="image is-128x128 mx-auto mb-2"><img class="avatar is-rounded" src="/img/avatar.svg" alt="王亚伟"></figure><p class="title is-size-4 is-block" style="line-height:inherit;">王亚伟</p><p class="is-size-6 is-block">3D · AI</p><p class="is-size-6 is-flex justify-content-center"><i class="fas fa-map-marker-alt mr-1"></i><span>北京</span></p></div></div></nav><nav class="level is-mobile"><div class="level-item has-text-centered is-marginless"><div><p class="heading">文章</p><a href="/archives/"><p class="title">55</p></a></div></div><div class="level-item has-text-centered is-marginless"><div><p class="heading">分类</p><a href="/categories/"><p class="title">9</p></a></div></div><div class="level-item has-text-centered is-marginless"><div><p class="heading">标签</p><a href="/tags/"><p class="title">64</p></a></div></div></nav><div class="level"><a class="level-item button is-primary is-rounded" href="https://github.com/wywzixin" target="_blank" rel="me noopener">关注我</a></div><div class="level is-mobile is-multiline"><a class="level-item button is-transparent is-marginless" target="_blank" rel="me noopener" title="Github" href="https://github.com/wywzixin"><i class="fab fa-github"></i></a><a class="level-item button is-transparent is-marginless" target="_blank" rel="me noopener" title="Facebook" href="https://facebook.com"><i class="fab fa-facebook"></i></a><a class="level-item button is-transparent is-marginless" target="_blank" rel="me noopener" title="Twitter" href="https://twitter.com"><i class="fab fa-twitter"></i></a><a class="level-item button is-transparent is-marginless" target="_blank" rel="me noopener" title="Dribbble" href="https://dribbble.com"><i class="fab fa-dribbble"></i></a><a class="level-item button is-transparent is-marginless" target="_blank" rel="me noopener" title="RSS" href="/"><i class="fas fa-rss"></i></a></div></div></div><!--!--><div class="card widget" data-type="categories"><div class="card-content"><div class="menu"><h3 class="menu-label">分类</h3><ul class="menu-list"><li><a class="level is-mobile" href="/categories/cesium/"><span class="level-start"><span class="level-item">cesium</span></span><span class="level-end"><span class="level-item tag">24</span></span></a></li><li><a class="level is-mobile" href="/categories/threejs/"><span class="level-start"><span class="level-item">threejs</span></span><span class="level-end"><span class="level-item tag">6</span></span></a></li><li><a class="level is-mobile" href="/categories/%E5%8C%97%E6%96%97%E7%BD%91%E6%A0%BC%E6%80%A7%E8%83%BD%E4%BC%98%E5%8C%96/"><span class="level-start"><span class="level-item">北斗网格性能优化</span></span><span class="level-end"><span class="level-item tag">7</span></span></a></li><li><a class="level is-mobile" href="/categories/%E5%9B%BE%E5%BD%A2%E5%AD%A6/"><span class="level-start"><span class="level-item">图形学</span></span><span class="level-end"><span class="level-item tag">1</span></span></a></li><li><a class="level is-mobile" href="/categories/vue/"><span class="level-start"><span class="level-item">vue</span></span><span class="level-end"><span class="level-item tag">2</span></span></a></li><li><a class="level is-mobile" href="/categories/agent/"><span class="level-start"><span class="level-item">agent</span></span><span class="level-end"><span class="level-item tag">8</span></span></a></li><li><a class="level is-mobile" href="/categories/claude-code/"><span class="level-start"><span class="level-item">claude code</span></span><span class="level-end"><span class="level-item tag">2</span></span></a></li><li><a class="level is-mobile" href="/categories/python/"><span class="level-start"><span class="level-item">python</span></span><span class="level-end"><span class="level-item tag">3</span></span></a></li><li><a class="level is-mobile" href="/categories/%E5%A4%A7%E6%A8%A1%E5%9E%8B/"><span class="level-start"><span class="level-item">大模型</span></span><span class="level-end"><span class="level-item tag">2</span></span></a></li></ul></div></div></div><div class="card widget" data-type="tags"><div class="card-content"><div class="menu"><h3 class="menu-label">标签</h3><div class="field is-grouped is-grouped-multiline"><div class="control"><a class="tags has-addons" href="/tags/Agent-Loop/"><span class="tag">Agent Loop</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/Cesium/"><span class="tag">Cesium</span><span class="tag">7</span></a></div><div class="control"><a class="tags has-addons" href="/tags/DrawCommand/"><span class="tag">DrawCommand</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/ENU/"><span class="tag">ENU</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/Embedding/"><span class="tag">Embedding</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/FAISS/"><span class="tag">FAISS</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/Function-Calling/"><span class="tag">Function Calling</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/GPT-3/"><span class="tag">GPT-3</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/GPU-Instancing/"><span class="tag">GPU Instancing</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/L6/"><span class="tag">L6</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/L7/"><span class="tag">L7</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/LLM/"><span class="tag">LLM</span><span class="tag">2</span></a></div><div class="control"><a class="tags has-addons" href="/tags/LOD/"><span class="tag">LOD</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/LRU/"><span class="tag">LRU</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/LangChain/"><span class="tag">LangChain</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/MCP/"><span class="tag">MCP</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/PBR/"><span class="tag">PBR</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/Pinecone/"><span class="tag">Pinecone</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/RAG/"><span class="tag">RAG</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/RTE/"><span class="tag">RTE</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/ReAct/"><span class="tag">ReAct</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/SSE/"><span class="tag">SSE</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/Shader/"><span class="tag">Shader</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/Token/"><span class="tag">Token</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/Transferable/"><span class="tag">Transferable</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/Transformer/"><span class="tag">Transformer</span><span class="tag">2</span></a></div><div class="control"><a class="tags has-addons" href="/tags/Web-Worker/"><span class="tag">Web Worker</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/WebGL/"><span class="tag">WebGL</span><span class="tag">2</span></a></div><div class="control"><a class="tags has-addons" href="/tags/agent/"><span class="tag">agent</span><span class="tag">8</span></a></div><div class="control"><a class="tags has-addons" href="/tags/asyncio/"><span class="tag">asyncio</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/cesium/"><span class="tag">cesium</span><span class="tag">24</span></a></div><div class="control"><a class="tags has-addons" href="/tags/claude-code/"><span class="tag">claude code</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/markstream/"><span class="tag">markstream</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/prompt-cache/"><span class="tag">prompt cache</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/python/"><span class="tag">python</span><span class="tag">3</span></a></div><div class="control"><a class="tags has-addons" href="/tags/threejs/"><span class="tag">threejs</span><span class="tag">6</span></a></div><div class="control"><a class="tags has-addons" href="/tags/vue/"><span class="tag">vue</span><span class="tag">2</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E4%B8%8A%E4%B8%8B%E6%96%87%E5%8E%8B%E7%BC%A9/"><span class="tag">上下文压缩</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E4%B8%8A%E4%B8%8B%E6%96%87%E5%B7%A5%E7%A8%8B/"><span class="tag">上下文工程</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E5%86%85%E5%AD%98%E7%AE%A1%E7%90%86/"><span class="tag">内存管理</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E5%8C%97%E6%96%97%E7%BD%91%E6%A0%BC/"><span class="tag">北斗网格</span><span class="tag">7</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E5%8F%82%E6%95%B0%E9%87%8F/"><span class="tag">参数量</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E5%90%8E%E5%A4%84%E7%90%86/"><span class="tag">后处理</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E5%90%91%E9%87%8F%E6%95%B0%E6%8D%AE%E5%BA%93/"><span class="tag">向量数据库</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E5%93%8D%E5%BA%94%E5%BC%8F%E5%8E%9F%E7%90%86/"><span class="tag">响应式原理</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E5%9B%BE%E5%BD%A2%E5%AD%A6/"><span class="tag">图形学</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E5%A4%9A%E5%A4%B4%E6%B3%A8%E6%84%8F%E5%8A%9B/"><span class="tag">多头注意力</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E5%A4%A7%E6%A8%A1%E5%9E%8B/"><span class="tag">大模型</span><span class="tag">2</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E5%B7%A5%E5%85%B7%E8%B0%83%E7%94%A8/"><span class="tag">工具调用</span><span class="tag">2</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E5%B9%B6%E5%8F%91/"><span class="tag">并发</span><span class="tag">2</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E6%9D%90%E8%B4%A8/"><span class="tag">材质</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E6%9E%B6%E6%9E%84%E8%AE%BE%E8%AE%A1/"><span class="tag">架构设计</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E6%A3%80%E7%B4%A2%E5%A2%9E%E5%BC%BA%E7%94%9F%E6%88%90/"><span class="tag">检索增强生成</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E6%B3%A8%E6%84%8F%E5%8A%9B%E6%9C%BA%E5%88%B6/"><span class="tag">注意力机制</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E6%B5%81%E5%BC%8F%E5%93%8D%E5%BA%94/"><span class="tag">流式响应</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E6%B5%81%E5%BC%8F%E6%B8%B2%E6%9F%93/"><span class="tag">流式渲染</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E7%A9%BA%E9%97%B4%E5%88%86%E5%9D%97/"><span class="tag">空间分块</span><span class="tag">2</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E7%BA%BF%E7%A8%8B%E6%B1%A0/"><span class="tag">线程池</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E7%BC%93%E5%AD%98/"><span class="tag">缓存</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E8%A7%86%E9%94%A5%E5%89%94%E9%99%A4/"><span class="tag">视锥剔除</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E8%AE%B0%E5%BF%86%E7%B3%BB%E7%BB%9F/"><span class="tag">记忆系统</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E8%BD%AE%E5%BB%93%E7%BA%BF/"><span class="tag">轮廓线</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E9%AB%98%E5%BA%A6%E5%88%87%E7%89%87/"><span class="tag">高度切片</span><span class="tag">1</span></a></div></div></div></div></div><div class="card widget" data-type="subscribe-email"><div class="card-content"><div class="menu"><h3 class="menu-label">订阅更新</h3><form action="https://feedburner.google.com/fb/a/mailverify" method="post" target="popupwindow" onsubmit="window.open(&#039;https://feedburner.google.com/fb/a/mailverify?uri=&#039;,&#039;popupwindow&#039;,&#039;scrollbars=yes,width=550,height=520&#039;);return true"><input type="hidden" value="" name="uri"><input type="hidden" name="loc" value="en_US"><div class="field has-addons"><div class="control has-icons-left is-expanded"><input class="input" name="email" type="email" placeholder="Email"><span class="icon is-small is-left"><i class="fas fa-envelope"></i></span></div><div class="control"><input class="button" type="submit" value="订阅"></div></div></form></div></div></div><div class="column-right-shadow is-hidden-widescreen"></div></div><div class="column column-right is-4-tablet is-4-desktop is-3-widescreen is-hidden-touch is-hidden-desktop-only order-3"><div class="card widget" data-type="recent-posts"><div class="card-content"><h3 class="menu-label">最新文章</h3><article class="media"><div class="media-content"><p class="date"><time dateTime="2026-09-15T00:00:00.000Z">2026-09-15</time></p><p class="title"><a href="/agent/llm-request-streaming/">LLM 请求与流式响应</a></p><p class="categories"><a href="/categories/agent/">agent</a></p></div></article><article class="media"><div class="media-content"><p class="date"><time dateTime="2026-09-14T23:00:00.000Z">2026-09-15</time></p><p class="title"><a href="/agent/react-agent-loop/">ReAct 与 Agent Loop</a></p><p class="categories"><a href="/categories/agent/">agent</a></p></div></article><article class="media"><div class="media-content"><p class="date"><time dateTime="2026-09-14T22:00:00.000Z">2026-09-15</time></p><p class="title"><a href="/agent/mcp-protocol/">MCP 协议与工具接入</a></p><p class="categories"><a href="/categories/agent/">agent</a></p></div></article><article class="media"><div class="media-content"><p class="date"><time dateTime="2026-09-14T21:00:00.000Z">2026-09-15</time></p><p class="title"><a href="/agent/function-calling/">Function Calling介绍</a></p><p class="categories"><a href="/categories/agent/">agent</a></p></div></article><article class="media"><div class="media-content"><p class="date"><time dateTime="2026-09-14T20:00:00.000Z">2026-09-15</time></p><p class="title"><a href="/agent/context-compaction/">上下文压缩与 Token 管理</a></p><p class="categories"><a href="/categories/agent/">agent</a></p></div></article></div></div><div class="card widget" data-type="archives"><div class="card-content"><div class="menu"><h3 class="menu-label">归档</h3><ul class="menu-list"><li><a class="level is-mobile" href="/archives/2026/09/"><span class="level-start"><span class="level-item">九月 2026</span></span><span class="level-end"><span class="level-item tag">25</span></span></a></li><li><a class="level is-mobile" href="/archives/2026/03/"><span class="level-start"><span class="level-item">三月 2026</span></span><span class="level-end"><span class="level-item tag">4</span></span></a></li><li><a class="level is-mobile" href="/archives/2025/03/"><span class="level-start"><span class="level-item">三月 2025</span></span><span class="level-end"><span class="level-item tag">25</span></span></a></li><li><a class="level is-mobile" href="/archives/2025/01/"><span class="level-start"><span class="level-item">一月 2025</span></span><span class="level-end"><span class="level-item tag">1</span></span></a></li></ul></div></div></div></div></div></div></section><footer class="footer"><div class="container"><div class="level"><div class="level-start"><a class="footer-logo is-block mb-2" href="/"><img src="/img/logo.svg" alt="Hexo" height="28"></a><p class="is-size-7"><span>&copy; 2026 wangyawei</span>  Powered by <a href="https://hexo.io/" target="_blank" rel="noopener">Hexo</a> &amp; <a href="https://github.com/ppoffice/hexo-theme-icarus" target="_blank" rel="noopener">Icarus</a></p><p class="is-size-7">© 2019</p></div><div class="level-end"><div class="field has-addons"><p class="control"><a class="button is-transparent is-large" target="_blank" rel="noopener" title="Creative Commons" href="https://creativecommons.org/"><i class="fab fa-creative-commons"></i></a></p><p class="control"><a class="button is-transparent is-large" target="_blank" rel="noopener" title="Attribution 4.0 International" href="https://creativecommons.org/licenses/by/4.0/"><i class="fab fa-creative-commons-by"></i></a></p><p class="control"><a class="button is-transparent is-large" target="_blank" rel="noopener" title="Download on GitHub" href="https://github.com/ppoffice/hexo-theme-icarus"><i class="fab fa-github"></i></a></p></div></div></div></div></footer><script src="https://cdn.jsdelivr.net/npm/jquery@3.3.1/dist/jquery.min.js"></script><script src="https://cdn.jsdelivr.net/npm/moment@2.22.2/min/moment-with-locales.min.js"></script><script src="https://cdn.jsdelivr.net/npm/clipboard@2.0.4/dist/clipboard.min.js" defer></script><script>moment.locale("zh-cn");</script><script>var IcarusThemeSettings = {
+            article: {
+                highlight: {
+                    clipboard: true,
+                    fold: 'unfolded'
+                }
+            }
+        };</script><script data-pjax src="/js/column.js"></script><a id="back-to-top" title="回到顶端" href="javascript:;"><i class="fas fa-chevron-up"></i></a><script data-pjax src="/js/back_to_top.js" defer></script><!--!--><!--!--><!--!--><script src="https://cdn.jsdelivr.net/npm/cookieconsent@3.1.1/build/cookieconsent.min.js" defer></script><script>window.addEventListener("load", () => {
+      window.cookieconsent.initialise({
+        type: "info",
+        theme: "edgeless",
+        static: false,
+        position: "bottom-left",
+        content: {
+          message: "此网站使用Cookie来改善您的体验。",
+          dismiss: "知道了！",
+          allow: "允许使用Cookie",
+          deny: "拒绝",
+          link: "了解更多",
+          policy: "Cookie政策",
+          href: "https://www.cookiesandyou.com/",
+        },
+        palette: {
+          popup: {
+            background: "#edeff5",
+            text: "#838391"
+          },
+          button: {
+            background: "#4b81e8"
+          },
+        },
+      });
+    });</script><script src="https://cdn.jsdelivr.net/npm/lightgallery@1.10.0/dist/js/lightgallery.min.js" defer></script><script src="https://cdn.jsdelivr.net/npm/justifiedGallery@3.8.1/dist/js/jquery.justifiedGallery.min.js" defer></script><script>window.addEventListener("load", () => {
+            if (typeof $.fn.lightGallery === 'function') {
+                $('.article').lightGallery({ selector: '.gallery-item' });
+            }
+            if (typeof $.fn.justifiedGallery === 'function') {
+                if ($('.justified-gallery > p > .gallery-item').length) {
+                    $('.justified-gallery > p > .gallery-item').unwrap();
+                }
+                $('.justified-gallery').justifiedGallery();
+            }
+        });</script><!--!--><!--!--><script src="https://cdn.jsdelivr.net/npm/pjax@0.2.8/pjax.min.js"></script><script src="/js/pjax.js"></script><!--!--><!--!--><!--!--><script data-pjax src="/js/main.js" defer></script><div class="searchbox"><div class="searchbox-container"><div class="searchbox-header"><div class="searchbox-input-container"><input class="searchbox-input" type="text" placeholder="想要查找什么..."></div><a class="searchbox-close" href="javascript:;">×</a></div><div class="searchbox-body"></div></div></div><script data-pjax src="/js/insight.js" defer></script><script data-pjax>document.addEventListener('DOMContentLoaded', function () {
+            loadInsight({"contentUrl":"/content.json"}, {"hint":"想要查找什么...","untitled":"(无标题)","posts":"文章","pages":"页面","categories":"分类","tags":"标签"});
+        });</script></body></html>

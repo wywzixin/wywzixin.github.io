@@ -1,0 +1,290 @@
+<!doctype html>
+<html lang="zh"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1"><meta><meta name="referrer" content="no-referrer"><title>Agent 记忆系统 - Hexo</title><link rel="manifest" href="/manifest.json"><meta name="application-name" content="Hexo"><meta name="msapplication-TileImage" content="/img/favicon.svg"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="Hexo"><meta name="apple-mobile-web-app-status-bar-style" content="default"><meta name="description" content="Agent 的记忆分两层：工作记忆是上下文窗口，长期记忆落在磁盘上。长期记忆又分三种形态——项目指令文件（人写的）、会话持久化（系统录的）、自动记忆（Agent 自己攒的）。这篇讲它们各自怎么存、怎么读、踩过哪些坑，以及最后是怎么汇进同一次请求里的。"><meta property="og:type" content="blog"><meta property="og:title" content="Agent 记忆系统"><meta property="og:url" content="https://wywzixin.github.io/agent/memory-system/"><meta property="og:site_name" content="Hexo"><meta property="og:description" content="Agent 的记忆分两层：工作记忆是上下文窗口，长期记忆落在磁盘上。长期记忆又分三种形态——项目指令文件（人写的）、会话持久化（系统录的）、自动记忆（Agent 自己攒的）。这篇讲它们各自怎么存、怎么读、踩过哪些坑，以及最后是怎么汇进同一次请求里的。"><meta property="og:locale" content="zh_CN"><meta property="og:image" content="https://cdn.nlark.com/yuque/0/2026/png/276041/1784297846413-598320bb-9c56-48ac-ab8c-2ede4fcd27e8.png"><meta property="og:image" content="https://cdn.nlark.com/yuque/0/2026/png/276041/1784297906424-d3969d34-2eae-4ac1-9739-207c65c18d9b.png"><meta property="og:image" content="https://cdn.nlark.com/yuque/0/2026/png/276041/1784298913948-2b997935-414a-40c8-8620-a7b539d13fd1.png"><meta property="og:image" content="https://cdn.nlark.com/yuque/0/2026/png/276041/1784299066293-0bb9d185-7032-4251-9b05-7cdf22e4f39d.png"><meta property="og:image" content="https://cdn.nlark.com/yuque/0/2026/png/276041/1784299107837-8e6e53e5-ddbc-4d11-a859-4206daff8e01.png"><meta property="og:image" content="https://cdn.nlark.com/yuque/0/2026/png/276041/1784299422177-608c420b-aeea-43e4-9bf3-f78a93d83f83.png"><meta property="og:image" content="https://cdn.nlark.com/yuque/0/2026/png/276041/1784299623554-4f4a80f5-2e9c-44df-a508-9c3f6b3dd6fd.png"><meta property="og:image" content="https://cdn.nlark.com/yuque/0/2026/png/276041/1784299640246-383f21fe-b6d8-4898-bdd2-54f311390ecd.png"><meta property="og:image" content="https://cdn.nlark.com/yuque/0/2026/png/276041/1784299741821-5c7453a2-2134-4ede-94f3-d292e1d86a60.png"><meta property="og:image" content="https://cdn.nlark.com/yuque/0/2026/png/276041/1784299807623-2519f957-073d-4e43-9097-2c65b360fc4f.png"><meta property="og:image" content="https://cdn.nlark.com/yuque/0/2026/png/276041/1784299839947-b02d02e7-9afd-4b52-beed-1347d308cf9b.png"><meta property="og:image" content="https://cdn.nlark.com/yuque/0/2026/png/276041/1784300282038-5136a0a0-5d97-49b1-a84c-141e3b543e17.png"><meta property="article:published_time" content="2026-09-14T19:00:00.000Z"><meta property="article:modified_time" content="2026-09-14T17:19:06.151Z"><meta property="article:author" content="wangyawei"><meta property="article:tag" content="agent"><meta property="article:tag" content="记忆系统"><meta property="article:tag" content="上下文工程"><meta property="twitter:card" content="summary"><meta property="twitter:image:src" content="https://cdn.nlark.com/yuque/0/2026/png/276041/1784297846413-598320bb-9c56-48ac-ab8c-2ede4fcd27e8.png"><script type="application/ld+json">{"@context":"https://schema.org","@type":"BlogPosting","mainEntityOfPage":{"@type":"WebPage","@id":"https://wywzixin.github.io/agent/memory-system/"},"headline":"Agent 记忆系统","image":["https://cdn.nlark.com/yuque/0/2026/png/276041/1784297846413-598320bb-9c56-48ac-ab8c-2ede4fcd27e8.png","https://cdn.nlark.com/yuque/0/2026/png/276041/1784297906424-d3969d34-2eae-4ac1-9739-207c65c18d9b.png","https://cdn.nlark.com/yuque/0/2026/png/276041/1784298913948-2b997935-414a-40c8-8620-a7b539d13fd1.png","https://cdn.nlark.com/yuque/0/2026/png/276041/1784299066293-0bb9d185-7032-4251-9b05-7cdf22e4f39d.png","https://cdn.nlark.com/yuque/0/2026/png/276041/1784299107837-8e6e53e5-ddbc-4d11-a859-4206daff8e01.png","https://cdn.nlark.com/yuque/0/2026/png/276041/1784299422177-608c420b-aeea-43e4-9bf3-f78a93d83f83.png","https://cdn.nlark.com/yuque/0/2026/png/276041/1784299623554-4f4a80f5-2e9c-44df-a508-9c3f6b3dd6fd.png","https://cdn.nlark.com/yuque/0/2026/png/276041/1784299640246-383f21fe-b6d8-4898-bdd2-54f311390ecd.png","https://cdn.nlark.com/yuque/0/2026/png/276041/1784299741821-5c7453a2-2134-4ede-94f3-d292e1d86a60.png","https://cdn.nlark.com/yuque/0/2026/png/276041/1784299807623-2519f957-073d-4e43-9097-2c65b360fc4f.png","https://cdn.nlark.com/yuque/0/2026/png/276041/1784299839947-b02d02e7-9afd-4b52-beed-1347d308cf9b.png","https://cdn.nlark.com/yuque/0/2026/png/276041/1784300282038-5136a0a0-5d97-49b1-a84c-141e3b543e17.png"],"datePublished":"2026-09-14T19:00:00.000Z","dateModified":"2026-09-14T17:19:06.151Z","author":{"@type":"Person","name":"wangyawei"},"publisher":{"@type":"Organization","name":"Hexo","logo":{"@type":"ImageObject","url":"https://wywzixin.github.io/img/logo.svg"}},"description":"Agent 的记忆分两层：工作记忆是上下文窗口，长期记忆落在磁盘上。长期记忆又分三种形态——项目指令文件（人写的）、会话持久化（系统录的）、自动记忆（Agent 自己攒的）。这篇讲它们各自怎么存、怎么读、踩过哪些坑，以及最后是怎么汇进同一次请求里的。"}</script><link rel="canonical" href="https://wywzixin.github.io/agent/memory-system/"><link rel="icon" href="/img/favicon.svg"><style>html,body{background:#f7f7f7}</style><link rel="stylesheet" href="https://use.fontawesome.com/releases/v6.0.0/css/all.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js@11.7.0/styles/atom-one-dark.css"><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Ubuntu:wght@400;600&amp;family=Source+Code+Pro"><link rel="stylesheet" href="/css/default.css"><!--!--><!--!--><!--!--><!--!--><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/cookieconsent@3.1.1/build/cookieconsent.min.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/lightgallery@1.10.0/dist/css/lightgallery.min.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/justifiedGallery@3.8.1/dist/css/justifiedGallery.min.css"><!--!--><!--!--><!--!--><style>.pace{-webkit-pointer-events:none;pointer-events:none;-webkit-user-select:none;-moz-user-select:none;user-select:none}.pace-inactive{display:none}.pace .pace-progress{background:#3273dc;position:fixed;z-index:2000;top:0;right:100%;width:100%;height:2px}</style><script src="https://cdn.jsdelivr.net/npm/pace-js@1.2.4/pace.min.js"></script><!--!--><!--!--><!-- hexo injector head_end start --><script>
+  (function () {
+      function switchTab() {
+          if (!location.hash) {
+            return;
+          }
+
+          const id = '#' + CSS.escape(location.hash.substring(1));
+          const $tabMenu = document.querySelector(`.tabs a[href="${id}"]`);
+          if (!$tabMenu) {
+            return;
+          }
+
+          const $tabMenuContainer = $tabMenu.parentElement.parentElement;
+          Array.from($tabMenuContainer.children).forEach($menu => $menu.classList.remove('is-active'));
+          Array.from($tabMenuContainer.querySelectorAll('a'))
+              .map($menu => document.getElementById($menu.getAttribute("href").substring(1)))
+              .forEach($content => $content.classList.add('is-hidden'));
+
+          if ($tabMenu) {
+              $tabMenu.parentElement.classList.add('is-active');
+          }
+          const $activeTab = document.querySelector(id);
+          if ($activeTab) {
+              $activeTab.classList.remove('is-hidden');
+          }
+      }
+      switchTab();
+      window.addEventListener('hashchange', switchTab, false);
+  })();
+  </script><!-- hexo injector head_end end --><meta name="generator" content="Hexo 7.3.0"></head><body class="is-3-column"><nav class="navbar navbar-main"><div class="container navbar-container"><div class="navbar-brand justify-content-center"><a class="navbar-item navbar-logo" href="/"><img src="/img/logo.svg" alt="Hexo" height="28"></a></div><div class="navbar-menu"><div class="navbar-start"><a class="navbar-item" href="/">首页</a><a class="navbar-item" href="/archives">归档</a><a class="navbar-item" href="/categories">分类</a><a class="navbar-item" href="/tags">标签</a><a class="navbar-item" href="/about">关于</a></div><div class="navbar-end"><a class="navbar-item" target="_blank" rel="noopener" title="Download on GitHub" href="https://github.com/ppoffice/hexo-theme-icarus"><i class="fab fa-github"></i></a><a class="navbar-item search" title="搜索" href="javascript:;"><i class="fas fa-search"></i></a></div></div></div></nav><section class="section"><div class="container"><div class="columns"><div class="column order-2 column-main is-8-tablet is-8-desktop is-6-widescreen"><div class="card"><article class="card-content article" role="article"><div class="article-meta is-size-7 is-uppercase level is-mobile"><div class="level-left"><span class="level-item"><time dateTime="2026-09-14T19:00:00.000Z" title="2026/9/15 03:00:00">2026-09-15</time>发表</span><span class="level-item"><time dateTime="2026-09-14T17:19:06.151Z" title="2026/9/15 01:19:06">2026-09-15</time>更新</span><span class="level-item"><a class="link-muted" href="/categories/agent/">agent</a></span><span class="level-item">39 分钟读完 (大约5859个字)</span></div></div><h1 class="title is-3 is-size-4-mobile">Agent 记忆系统</h1><div class="content"><p><strong>Agent 的记忆分两层：工作记忆是上下文窗口，只活在当前会话里；长期记忆落在磁盘上，跨会话有效。</strong></p>
+<p>长期记忆有三种形态，区别在于<strong>谁写的</strong>：</p>
+<table>
+<thead>
+<tr>
+<th>形态</th>
+<th>是什么</th>
+<th>谁写的</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>项目指令文件</strong></td>
+<td>预先写好的项目知识和编码规范</td>
+<td>人，写一次</td>
+</tr>
+<tr>
+<td><strong>会话持久化</strong></td>
+<td>每一轮对话的原始记录</td>
+<td>系统，自动追加</td>
+</tr>
+<tr>
+<td><strong>自动记忆</strong></td>
+<td>从对话里提炼出的偏好、纠正、项目事实</td>
+<td>Agent 自己，边用边攒</td>
+</tr>
+</tbody></table>
+<p>三种形态最后都变成一段文本，走同一条管线注入到请求里。<strong>它们不是三个独立的功能，是同一件事的三个来源。</strong></p>
+<p>上一篇讲的是上下文窗口装不下怎么办（<a href="/agent/context-compaction/">上下文压缩与 Token 管理</a>）。这一篇讲另一半：<strong>什么东西不该只活在窗口里。</strong></p>
+<span id="more"></span>
+
+<h2 id="1-两层记忆，三种长期形态"><a href="#1-两层记忆，三种长期形态" class="headerlink" title="1. 两层记忆，三种长期形态"></a>1. 两层记忆，三种长期形态</h2><p><img src="https://cdn.nlark.com/yuque/0/2026/png/276041/1784297846413-598320bb-9c56-48ac-ab8c-2ede4fcd27e8.png" alt="工作记忆与长期记忆"></p>
+<p><strong>工作记忆就是上下文窗口。</strong> 那个 200K token 的空间是 Agent 的「大脑带宽」，当前正在处理的信息全在这里——容量小、速度快、用完就丢。它的生命周期就是一个会话，进程一退，里面什么都没了。</p>
+<p><strong>长期记忆对应的是所有持久化到磁盘上的信息。</strong> 这一层不随进程退出而消失，按内容性质分，它有三副面孔：</p>
+<ul>
+<li><strong>会话持久化</strong> —— 你跟 Agent 的每次对话都存下来，下次可以恢复。就像第二天早上打开电脑看到昨天的聊天记录，上下文立刻回来了。</li>
+<li><strong>项目指令文件</strong> —— 预先写好的项目知识和编码规范，相当于员工的「入职文档」，启动就读。</li>
+<li><strong>自动记忆</strong> —— Agent 在对话中自己积累的经验：你的编码偏好、项目的技术细节。</li>
+</ul>
+<p><img src="https://cdn.nlark.com/yuque/0/2026/png/276041/1784297906424-d3969d34-2eae-4ac1-9739-207c65c18d9b.png" alt="长期记忆的三条分支"></p>
+<p>接下来三节分别拆这三种形态。有个共同的观察可以先把话说了：<strong>它们解决的是同一类问题的不同侧面——什么信息值得活过一次会话。</strong></p>
+<h2 id="2-项目指令文件：Agent-的入职文档"><a href="#2-项目指令文件：Agent-的入职文档" class="headerlink" title="2. 项目指令文件：Agent 的入职文档"></a>2. 项目指令文件：Agent 的入职文档</h2><p>最直观的一种长期记忆：一份 Markdown，Agent 每次启动都读一遍。</p>
+<p>它有三级，按优先级排：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">1. 项目根目录/AGENT.md          &lt;- 项目级（最高优先级）</span><br><span class="line">2. 项目根目录/.agent/AGENT.md   &lt;- 项目级（可被 .gitignore 忽略）</span><br><span class="line">3. ~/.agent/AGENT.md            &lt;- 用户级（个人偏好）</span><br></pre></td></tr></table></figure>
+
+<h3 id="为什么项目级有两个位置"><a href="#为什么项目级有两个位置" class="headerlink" title="为什么项目级有两个位置"></a>为什么项目级有两个位置</h3><p>因为有些内容该共享，有些不该。</p>
+<p>有些团队希望 Agent 的指令文件提交到 Git，让所有成员用同一份 Agent 指令——那就放项目根目录，跟着仓库走。而有些开发者写的指令里含有个人特定的内容，不想提交到版本库，就放 <code>.agent/</code> 目录下，然后把这个目录加进 <code>.gitignore</code>。</p>
+<p><strong>两个位置，一种文件，区别只在版本控制里可见不可见。</strong></p>
+<h3 id="加载：拼接，不是覆盖"><a href="#加载：拼接，不是覆盖" class="headerlink" title="加载：拼接，不是覆盖"></a>加载：拼接，不是覆盖</h3><p>流程很直观：按优先级顺序依次检查每个路径，<strong>文件存在就读取，不存在就跳过</strong>。所有读到的内容用 <code>---</code> 分隔线拼成一段完整文本，注入到 messages 里。Agent 在处理用户的实际请求之前，就已经「读完入职文档」了。</p>
+<p>这里有个容易想反的点：<strong>三级不是「高优先级覆盖低优先级」，而是全部保留、拼在一起。</strong></p>
+<p>因为这个设计假设三级管的是不同的东西——用户级装个人偏好（「回复尽量用中文」），项目级装团队规范和项目知识（「部署脚本在 scripts&#x2F; 下」）。<strong>它们本来就不冲突</strong>，硬要覆盖反而会丢掉信息。</p>
+<h3 id="用-include-拆开"><a href="#用-include-拆开" class="headerlink" title="用 @include 拆开"></a>用 @include 拆开</h3><p>一份指令文件写到几百行就该拆了。用一个 <code>@include</code> 指令，把大块知识拆成独立文档：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"># AGENT.md</span><br><span class="line">@include architecture.md</span><br><span class="line">@include coding-style.md</span><br><span class="line">@include handler/README.md</span><br></pre></td></tr></table></figure>
+
+<p>入口文件只留目录，真内容在各自文档里。好处是结构化、可复用、便于维护——改编码规范只动 <code>coding-style.md</code>。</p>
+<p>但它引入了两个新风险：</p>
+<p><img src="https://cdn.nlark.com/yuque/0/2026/png/276041/1784298913948-2b997935-414a-40c8-8620-a7b539d13fd1.png" alt="@include 的两个风险"></p>
+<ul>
+<li><strong>无限递归</strong> —— <code>A.md</code> include <code>B.md</code>，<code>B.md</code> 又 include <code>A.md</code>，解析器就转不出来了。对策很简单：<strong>限制深度，5 层封顶。</strong></li>
+<li><strong>路径越界</strong> —— <code>@include ../../etc/passwd</code> 会把项目外的文件读进上下文。对策是校验：<strong>解析出来的路径必须落在项目目录内。</strong></li>
+</ul>
+<p>两条都是「展开用户提供的东西」时通用的防御，跟模板引擎、构建工具踩的是同一类坑。</p>
+<h2 id="3-会话持久化：让对话可以「存档读档」"><a href="#3-会话持久化：让对话可以「存档读档」" class="headerlink" title="3. 会话持久化：让对话可以「存档读档」"></a>3. 会话持久化：让对话可以「存档读档」</h2><p>指令文件解决的是<strong>预先写好</strong>的知识。但还有一类长期记忆是动态产生的：你跟 Agent 的每次对话、每个操作、每个决策，需要在会话结束后存下来，以便恢复。</p>
+<p><img src="https://cdn.nlark.com/yuque/0/2026/png/276041/1784299066293-0bb9d185-7032-4251-9b05-7cdf22e4f39d.png" alt="存档与读档"></p>
+<p>存储格式选了 <strong>JSONL（JSON Lines）</strong>：每行一个 JSON 对象，代表一条消息。</p>
+<h3 id="为什么是-JSONL-而不是一个大-JSON"><a href="#为什么是-JSONL-而不是一个大-JSON" class="headerlink" title="为什么是 JSONL 而不是一个大 JSON"></a>为什么是 JSONL 而不是一个大 JSON</h3><p><img src="https://cdn.nlark.com/yuque/0/2026/png/276041/1784299107837-8e6e53e5-ddbc-4d11-a859-4206daff8e01.png" alt="普通 JSON 与 JSONL 对比"></p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>普通 JSON</th>
+<th>JSONL</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>写入</strong></td>
+<td>每次读写整个文件</td>
+<td><strong>追加一行就行</strong></td>
+</tr>
+<tr>
+<td><strong>崩溃</strong></td>
+<td>数据全坏（文件本身就是半个 JSON）</td>
+<td><strong>只丢最后一行</strong></td>
+</tr>
+<tr>
+<td><strong>追加复杂度</strong></td>
+<td>O(n)</td>
+<td><strong>O(1)</strong></td>
+</tr>
+</tbody></table>
+<p>三条里最关键的是第二条。Agent 是一个长时间运行的进程，被 Ctrl-C、被 OOM killer 杀掉、机器断电，都是常态。<strong>用大 JSON 存，一次崩溃就丢掉整个会话历史；用 JSONL 存，最坏情况是丢掉最后一条写得半截的消息。</strong></p>
+<h3 id="一条记录长什么样"><a href="#一条记录长什么样" class="headerlink" title="一条记录长什么样"></a>一条记录长什么样</h3><figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line">RecordType = <span class="string">&quot;user&quot;</span> | <span class="string">&quot;assistant&quot;</span> | <span class="string">&quot;tool_result&quot;</span></span><br><span class="line"></span><br><span class="line">SessionRecord:</span><br><span class="line">    role:       RecordType</span><br><span class="line">    content:    RawJSON       // 保留原始 JSON，不做额外转换</span><br><span class="line">    toolUseId:  string?       // 仅 tool_result 有</span><br><span class="line">    ts:         int64         // Unix 时间戳</span><br></pre></td></tr></table></figure>
+
+<p><img src="https://cdn.nlark.com/yuque/0/2026/png/276041/1784299422177-608c420b-aeea-43e4-9bf3-f78a93d83f83.png" alt="JSONL 记录结构"></p>
+<p><code>content</code> 那一行的注释值得单独说：<strong>保留原始 JSON，不做额外转换。</strong></p>
+<p>也就是说，落到盘上的内容跟发给模型的内容是同一个形状，中间不做一层自己的数据模型。好处是恢复的时候不用「反序列化 → 转成内部结构 → 再序列化回去」这一圈——<strong>直接把读到的 JSON 拼进 messages 就行</strong>，不会因为转换丢字段（比如某个 provider 加了个新字段，或者 <code>tool_use</code> 上的额外元数据）。</p>
+<p>代价是存储层完全不知道内容语义，想按内容查询得自己解析。这里不需要，所以划得来。</p>
+<p>文件这么放：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">.agent/</span><br><span class="line">  sessions/</span><br><span class="line">    20250115-143000-a3f7.jsonl</span><br><span class="line">    20250116-091500-b2c9.jsonl</span><br></pre></td></tr></table></figure>
+
+<p>会话 ID 是 <code>YYYYMMDD-HHMMSS-xxxx</code>：前 15 个字符的时间戳让你一眼看出创建时间，末尾 4 个十六进制随机后缀避免同秒冲突。单进程下普通用户几乎用不到后缀，但 <strong>CI&#x2F;CD 那种可能瞬时启动多个会话的场景能保证 ID 不撞车</strong>——同秒生成两个会话也会落到不同文件，不会出现多个进程往同一个 <code>.jsonl</code> 里交错写消息。</p>
+<p>这里还有一个刻意的省略：<strong>没有元信息文件。</strong> 那 <code>/session list</code> 怎么快速展示会话列表？直接解析 JSONL。列表需要的信息就两个——会话创建时间（从文件名就能读出来）和最后活跃时间（读文件最后一行的 <code>ts</code> 字段）。JSONL 文件通常不大，逐行扫也足够快，<strong>额外维护一个元信息文件带来的复杂度不值得。</strong>（这就是上一篇「能轻则轻」的同一套取舍。）</p>
+<h3 id="写入顺序：先文件，后内存"><a href="#写入顺序：先文件，后内存" class="headerlink" title="写入顺序：先文件，后内存"></a>写入顺序：先文件，后内存</h3><p>每次追加消息时：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line">function Session.Append(message):</span><br><span class="line">    record = SessionRecord.fromMessage(message)</span><br><span class="line">    file.write(jsonSerialize(record) + <span class="string">&quot;\n&quot;</span>)   // 先落盘</span><br><span class="line">    conv.addMessage(message)                   // 再更新内存</span><br><span class="line">    meta.messageCount += <span class="number">1</span></span><br><span class="line">    meta.lastActive = now()</span><br></pre></td></tr></table></figure>
+
+<p><img src="https://cdn.nlark.com/yuque/0/2026/png/276041/1784299623554-4f4a80f5-2e9c-44df-a508-9c3f6b3dd6fd.png" alt="正确顺序与错误顺序"></p>
+<p><strong>注意这个顺序。</strong> 如果写文件成功、更新内存前程序崩了，没关系——下次恢复时会从文件重建内存状态。反过来先更新内存再写文件，崩溃时<strong>内存里有、文件里没有的那条消息就永远丢了。</strong></p>
+<p>一句话：<strong>磁盘是真相，内存只是它的缓存。</strong></p>
+<h3 id="恢复不是读回来就完了"><a href="#恢复不是读回来就完了" class="headerlink" title="恢复不是读回来就完了"></a>恢复不是读回来就完了</h3><p><img src="https://cdn.nlark.com/yuque/0/2026/png/276041/1784299640246-383f21fe-b6d8-4898-bdd2-54f311390ecd.png" alt="恢复的四个步骤"></p>
+<p>四步走：<strong>逐行解析 → 验证消息链 → 检查 token → 时间提示。</strong></p>
+<p><strong>第一步，逐行解析，不完整的行直接跳过。</strong></p>
+<p><img src="https://cdn.nlark.com/yuque/0/2026/png/276041/1784299741821-5c7453a2-2134-4ede-94f3-d292e1d86a60.png" alt="JSONL 文件恢复示意图"></p>
+<p>崩溃通常会留下最后一行写了一半的 JSON。这一行解析失败，<strong>跳过它，前面的照常恢复。</strong> 这正是 JSONL 相对大 JSON 的价值所在——错误被限制在一行之内。</p>
+<p><strong>第二步，验证消息链。</strong></p>
+<p>这一步容易被忽略。<code>tool_use</code> 必须有一个配对的 <code>tool_result</code>，如果历史里有个 <code>tool_use</code> 后面什么都没有，这段消息发给模型会<strong>直接报错</strong>——API 要求消息链完整（<code>tool_use</code> &#x2F; <code>tool_result</code> 的配对规则在 <a href="/agent/llm-request-streaming/">LLM 请求与流式响应</a> 里拆过）。</p>
+<p>什么时候会出现这种断裂？工具执行到一半进程被杀、或者崩溃恰好发生在两次追加之间。这时候要么补一条「工具被中断」的 <code>tool_result</code>，要么把这个 <code>tool_use</code> 及其后续一起截掉——<strong>总之不能原样发出去。</strong></p>
+<p><strong>第三步，检查 token。</strong></p>
+<p>恢复出来的历史可能已经超过自动压缩的阈值了（比如会话本来就快到 167,000 才中断的）。所以恢复之后要立刻判断：<strong>这份历史需不需要先压一遍再继续？</strong> 否则用户一开口撞上的就是 <code>prompt_too_long</code>。</p>
+<p><strong>第四步，时间提示。</strong></p>
+<p>恢复出来的最后一条消息可能是三天前的。如果原样发过去，模型会把它当成「刚刚发生的事」，接着回答「好的，我这就继续」——<strong>它不知道中间隔了三天。</strong></p>
+<p>所以在恢复后的上下文里塞一条提示：<strong>距上次对话已过去 N 天。</strong> 24 小时以内则跳过——那种情况下上下文基本还是连续的，加提示反而多话。</p>
+<p><strong>这一步没有任何技术含量，但它是「恢复」和「无缝恢复」之间的差别。</strong></p>
+<h3 id="顺手清理"><a href="#顺手清理" class="headerlink" title="顺手清理"></a>顺手清理</h3><p><img src="https://cdn.nlark.com/yuque/0/2026/png/276041/1784299807623-2519f957-073d-4e43-9097-2c65b360fc4f.png" alt="启动时清理过期会话"></p>
+<p>启动时顺手删掉 30 天前的会话文件。<strong>会话历史是只增不减的</strong>，没有这一步，目录会一直长下去。</p>
+<h2 id="4-自动记忆：让-Agent-自己「记笔记」"><a href="#4-自动记忆：让-Agent-自己「记笔记」" class="headerlink" title="4. 自动记忆：让 Agent 自己「记笔记」"></a>4. 自动记忆：让 Agent 自己「记笔记」</h2><p>前两种记忆，一个靠人预先写，一个靠系统照原样录。它们都缺一样东西：<strong>判断</strong>。</p>
+<p>指令文件是人提前想好的，想不到的就漏了；会话持久化是流水账，<strong>它不区分哪条重要哪条不重要。</strong> 自动记忆补的正是这一环——让 Agent 在对话过程中自己判断「这句话值得长期记住」，然后记下来。</p>
+<p><img src="https://cdn.nlark.com/yuque/0/2026/png/276041/1784299839947-b02d02e7-9afd-4b52-beed-1347d308cf9b.png" alt="对话中自动提取用户偏好"></p>
+<h3 id="时机：每轮-Agent-Loop-结束后"><a href="#时机：每轮-Agent-Loop-结束后" class="headerlink" title="时机：每轮 Agent Loop 结束后"></a>时机：每轮 Agent Loop 结束后</h3><p>判断放在哪儿跑？答案是<strong>模型给出最终回复、不再调用工具的那个时刻</strong>——一轮 Agent Loop 结束。</p>
+<p>这个点选得有讲究：<strong>这一轮已经走完，结论都出来了</strong>，提取器看到的是一个完整的一问一答。放在循环中间提取，拿到的是半截状态，模型刚读完文件还没动手，你没法判断它最终要干什么。</p>
+<p>而且这一步是<strong>异步</strong>的。它在后台回顾本轮对话，不阻塞用户的下一轮输入——用户敲完下一句，记忆提取可能还没跑完。<strong>用一次额外 LLM 调用换永久能力，但不能让它出现在用户能感知的延迟里。</strong></p>
+<h3 id="四类记忆，两个归属"><a href="#四类记忆，两个归属" class="headerlink" title="四类记忆，两个归属"></a>四类记忆，两个归属</h3><p>四类按归属分成两组：</p>
+<table>
+<thead>
+<tr>
+<th>type</th>
+<th>是什么</th>
+<th>存在哪</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>user</code> 用户偏好</td>
+<td>编码习惯、语言习惯（「不要用 tab」）</td>
+<td>用户级 <code>~/.agent/memory/</code></td>
+</tr>
+<tr>
+<td><code>feedback</code> 纠正反馈</td>
+<td>用户指出 Agent 错了，并给出正确做法</td>
+<td>用户级 <code>~/.agent/memory/</code></td>
+</tr>
+<tr>
+<td><code>project</code> 项目知识</td>
+<td>技术栈、目录结构、部署方式</td>
+<td>项目级 <code>&lt;项目根&gt;/.agent/memory/</code></td>
+</tr>
+<tr>
+<td><code>reference</code> 参考信息</td>
+<td>外部链接、API 文档地址</td>
+<td>项目级 <code>&lt;项目根&gt;/.agent/memory/</code></td>
+</tr>
+</tbody></table>
+<p>分组的依据很干净：<strong>关于「人」的跟着人走，关于「项目」的跟着项目走。</strong></p>
+<p><code>user</code> 和 <code>feedback</code> 换个仓库仍然成立——「不要用 tab」在你所有项目里都成立——所以放用户级，所有项目复用。<code>project</code> 和 <code>reference</code> 换个项目就完全不适用了（「数据库是 PostgreSQL 15」只对这一个仓库有意义），所以放项目级，还可以选择提交到 Git 跟团队共享。</p>
+<p><strong><code>type</code> 字段选对了，目录也就定了。</strong> 这个设计省掉了一个配置项。</p>
+<h3 id="存储：一条记忆一个文件"><a href="#存储：一条记忆一个文件" class="headerlink" title="存储：一条记忆一个文件"></a>存储：一条记忆一个文件</h3><figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">.agent/memory/</span><br><span class="line">  MEMORY.md             # 索引文件（注入到 messages）</span><br><span class="line">  user-prefers-any.md   # 每条记忆一个文件</span><br><span class="line">  feedback-testing.md</span><br><span class="line">  project-deadline.md</span><br></pre></td></tr></table></figure>
+
+<p><strong>注意是「一条记忆一个文件」，不是一个大文件。</strong> 这个选择带来三个好处：</p>
+<ul>
+<li><strong>新增不用改旧文件</strong> —— 加一条记忆就是写一个新文件，不会跟别人（或别的会话）同时改同一个大文件</li>
+<li><strong>删除就是删文件</strong> —— 不用在几百行里定位再删</li>
+<li><strong>索引和正文可以分开用</strong> —— 索引整个注入，正文按需读取（下一节细说）</li>
+</ul>
+<p>索引文件只有指针，每行一条：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">- [偏好 any 语法](user-prefers-any.md) — 用户要求用 any 替代 interface&#123;&#125;</span><br><span class="line">- [项目用 golang-migrate](project-migration-tool.md) — 数据库迁移工具选型</span><br></pre></td></tr></table></figure>
+
+<p>单条记忆的格式跟项目指令文件是同一套 Markdown——frontmatter 加正文：</p>
+<figure class="highlight markdown"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line">---</span><br><span class="line">name: user-prefers-any</span><br><span class="line">description: 用户偏好使用 any 而非 interface&#123;&#125;</span><br><span class="line"><span class="section">type: feedback</span></span><br><span class="line"><span class="section">---</span></span><br><span class="line"></span><br><span class="line">用户明确要求使用 any 替代 interface&#123;&#125;。</span><br><span class="line"><span class="strong">**Why:**</span> 现代 Go 语法更简洁</span><br><span class="line"><span class="strong">**How to apply:**</span> 所有新写的泛型代码用 any</span><br></pre></td></tr></table></figure>
+
+<p><code>description</code> 那一行是给索引和检索用的，<strong>正文里的 <code>Why</code> 和 <code>How to apply</code> 是给模型用的</strong>——只有一行结论，模型下次遇到类似情况可能还是会犹豫；带上「为什么」和「怎么应用」，它才知道边界在哪。</p>
+<h3 id="提取靠一段提示词"><a href="#提取靠一段提示词" class="headerlink" title="提取靠一段提示词"></a>提取靠一段提示词</h3><p>没有规则引擎，没有分类器，就是一次 LLM 调用：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line">memoryExtractionPrompt = <span class="string">&quot;&quot;&quot;</span></span><br><span class="line"><span class="string">下面是当前的记忆目录清单和最近一轮对话。</span></span><br><span class="line"><span class="string">分析对话，提取值得长期记忆的信息。</span></span><br><span class="line"><span class="string"></span></span><br><span class="line"><span class="string">操作：</span></span><br><span class="line"><span class="string">- 创建新记忆文件（写 frontmatter + 正文，更新 MEMORY.md 索引）</span></span><br><span class="line"><span class="string">- 更新已有记忆文件（如果信息有变化）</span></span><br><span class="line"><span class="string">- 删除过时记忆文件（同时从 MEMORY.md 移除指针）</span></span><br><span class="line"><span class="string"></span></span><br><span class="line"><span class="string">分类：user / feedback / project / reference</span></span><br><span class="line"><span class="string">已有相同含义的记忆不要重复创建。</span></span><br><span class="line"><span class="string">没有值得记忆的内容就什么都不做。</span></span><br><span class="line"><span class="string">&quot;&quot;&quot;</span></span><br></pre></td></tr></table></figure>
+
+<p>倒数第二行是去重的全部实现：<strong>已有相同含义的记忆不要重复创建。</strong></p>
+<p>为什么不用相似度算法？因为<strong>整个记忆目录清单就在提示词里</strong>——模型看得到已有记忆的 <code>name</code> 和 <code>description</code>，它做的判断比向量相似度更准（「用 any 而不是 interface{}」和「偏好 Go 现代语法」字面不相似，但说的是同一件事）。用向量去重反而要多维护一套索引、一套阈值，还得调。</p>
+<p>最后一行同样重要：<strong>没有值得记忆的内容就什么都不做。</strong> 给提取器一个「可以什么都不做」的选项，它才不会为了交差硬凑出一条记忆。</p>
+<p>去重交给 LLM 有个前提：<strong>记忆得足够少，少到能整个列进提示词。</strong> 几十条没问题，几万条就得上检索了——那时候这套设计才需要换。</p>
+<h2 id="5-三种记忆是怎么汇进一次请求的"><a href="#5-三种记忆是怎么汇进一次请求的" class="headerlink" title="5. 三种记忆是怎么汇进一次请求的"></a>5. 三种记忆是怎么汇进一次请求的</h2><p>到这里三种形态都各自落盘了。最后一步是把它们拼进请求：</p>
+<p><img src="https://cdn.nlark.com/yuque/0/2026/png/276041/1784300282038-5136a0a0-5d97-49b1-a84c-141e3b543e17.png" alt="API 请求结构"></p>
+<figure class="highlight json"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line"><span class="punctuation">&#123;</span></span><br><span class="line">  <span class="attr">&quot;model&quot;</span><span class="punctuation">:</span> <span class="string">&quot;claude-sonnet-4-6&quot;</span><span class="punctuation">,</span></span><br><span class="line">  <span class="attr">&quot;system&quot;</span><span class="punctuation">:</span> <span class="string">&quot;你是一个终端 AI 编程助手。&quot;</span><span class="punctuation">,</span></span><br><span class="line">  <span class="attr">&quot;messages&quot;</span><span class="punctuation">:</span> <span class="punctuation">[</span></span><br><span class="line">    <span class="punctuation">&#123;</span> <span class="attr">&quot;role&quot;</span><span class="punctuation">:</span> <span class="string">&quot;user&quot;</span><span class="punctuation">,</span> <span class="attr">&quot;content&quot;</span><span class="punctuation">:</span> <span class="string">&quot;## 项目指令\n...\n\n## 自动记忆\n- [偏好 any 语法](user-prefers-any.md) — ...\n- [项目用 golang-migrate](project-migration-tool.md) — ...&quot;</span> <span class="punctuation">&#125;</span><span class="punctuation">,</span></span><br><span class="line">    <span class="punctuation">&#123;</span> <span class="attr">&quot;role&quot;</span><span class="punctuation">:</span> <span class="string">&quot;assistant&quot;</span><span class="punctuation">,</span> <span class="attr">&quot;content&quot;</span><span class="punctuation">:</span> <span class="string">&quot;好的，我已了解项目背景。&quot;</span> <span class="punctuation">&#125;</span><span class="punctuation">,</span></span><br><span class="line">    <span class="punctuation">&#123;</span> <span class="attr">&quot;role&quot;</span><span class="punctuation">:</span> <span class="string">&quot;user&quot;</span><span class="punctuation">,</span> <span class="attr">&quot;content&quot;</span><span class="punctuation">:</span> <span class="string">&quot;帮我在 handler 里加一个用户注册接口&quot;</span> <span class="punctuation">&#125;</span></span><br><span class="line">  <span class="punctuation">]</span><span class="punctuation">,</span></span><br><span class="line">  <span class="attr">&quot;tools&quot;</span><span class="punctuation">:</span> <span class="punctuation">[</span> ... <span class="punctuation">]</span></span><br><span class="line"><span class="punctuation">&#125;</span></span><br></pre></td></tr></table></figure>
+
+<p><strong><code>system</code> 很短，只有一句角色定义。</strong> 项目指令和记忆索引都放在 <code>messages</code> 里，作为第一条 user 消息。这个分工有两个理由：</p>
+<ul>
+<li><strong><code>system</code> 是最稳定的那一层</strong>，只放角色设定。项目指令和记忆每次会话都可能变，放在 messages 里，改的只是消息内容，不用去动 system。</li>
+<li><strong>项目指令和记忆索引走的是同一条加载管线</strong>（发现文件 → 读取内容 → 注入 messages）。塞进 system 就得给它俩单独维护一套逻辑。</li>
+</ul>
+<h3 id="注入索引，不注入正文"><a href="#注入索引，不注入正文" class="headerlink" title="注入索引，不注入正文"></a>注入索引，不注入正文</h3><p>再看一眼上面那条消息：注入的是 <code>MEMORY.md</code> 的<strong>索引</strong>，每行一条，指针加一句话说明。<strong>不是所有记忆的正文。</strong></p>
+<p><strong>模型看到索引，只知道「有这么回事」；真要用的时候，再用读文件的工具去读那个文件。</strong></p>
+<p>这是<strong>渐进披露</strong>——跟 Skill 的加载方式同一个思路（<a href="/agent/function-calling/">Function Calling介绍</a> §6）：平时只带着 <code>name</code> + <code>description</code>，命中了才把正文读进来。道理是一样的：<strong>上下文的每一行都按 token 收费，所以先给它目录，别给它全书。</strong></p>
+<h3 id="一个副作用"><a href="#一个副作用" class="headerlink" title="一个副作用"></a>一个副作用</h3><p>按这个设计，索引是<strong>会话启动时</strong>注入一次的。所以这一轮新学到的记忆，<strong>不会当场生效</strong>——提取器在回合结束后才写文件，而索引早就注入完了。要等下一次会话，它才进上下文。</p>
+<p>这个延迟是有意接受的：记忆本来就是为「下次」准备的，不是为「这一轮」准备的。<strong>本轮需要的信息，本来就在上下文里。</strong></p>
+<h2 id="6-小结"><a href="#6-小结" class="headerlink" title="6. 小结"></a>6. 小结</h2><p><strong>一、记忆分两层，判断标准是活多久。</strong> 工作记忆是上下文窗口，会话结束就没了；长期记忆落在磁盘上，跨会话有效。前者要压缩（上一篇），后者要组织（这一篇）。</p>
+<p><strong>二、长期记忆有三种形态，区别在于谁写的。</strong> 项目指令文件是人预先写的，会话持久化是系统照原样录的，自动记忆是 Agent 自己判断出来的。三者最后走同一条管线注入请求——<strong>不是三个功能，是同一件事的三个来源。</strong></p>
+<p><strong>三、项目指令文件是三级拼接，不是覆盖。</strong> 项目根目录、<code>.agent/</code>、用户目录三个位置各有用途；三级管的是不同的东西（个人偏好 &#x2F; 团队规范 &#x2F; 项目知识），所以全部保留。<code>@include</code> 让它能模块化，代价是要自己防住无限递归和路径越界。</p>
+<p><strong>四、会话持久化选 JSONL，是为了崩溃时只丢最后一行。</strong> 追加 O(1)、错误被限制在一行之内，天然适合一个随时可能被杀的长时间进程。写入顺序是<strong>先落盘再更新内存</strong>——磁盘是真相，内存只是缓存。</p>
+<p><strong>五、恢复比读取麻烦：</strong> 跳过不完整的行、验证 <code>tool_use</code> &#x2F; <code>tool_result</code> 的配对、检查要不要先压缩、补一条「距上次 N 天」的提示。最后一条没有技术含量，但它是「恢复」和「无缝恢复」的差别。</p>
+<p><strong>六、自动记忆的核心是判断，实现是一段提示词。</strong> 每轮 Agent Loop 结束后异步提取，按 <code>user</code> &#x2F; <code>feedback</code> &#x2F; <code>project</code> &#x2F; <code>reference</code> 分类——关于「人」的跟人走，关于「项目」的跟项目走。一条记忆一个文件，<code>MEMORY.md</code> 只存指针。去重交给提取 LLM，因为整个目录清单就在提示词里。</p>
+<p><strong>七、注入索引，不注入正文。</strong> 长期记忆的索引贴在请求最前面，正文按需读取——渐进披露，跟 Skill 一个思路。含义是<strong>新学到的记忆要下次会话才生效</strong>，因为索引在会话启动时就注入了。</p>
+<h2 id="参考"><a href="#参考" class="headerlink" title="参考"></a>参考</h2><ul>
+<li>Claude Code 记忆（<code>AGENT.md</code> 与自动记忆）：<a target="_blank" rel="noopener" href="https://code.claude.com/docs/en/memory">https://code.claude.com/docs/en/memory</a></li>
+<li>Agent Skills（渐进披露）：<a target="_blank" rel="noopener" href="https://code.claude.com/docs/en/skills">https://code.claude.com/docs/en/skills</a></li>
+<li>上一篇：上下文压缩与 Token 管理 —— <a href="https://wywzixin.github.io/agent/context-compaction/">https://wywzixin.github.io/agent/context-compaction/</a></li>
+<li>ReAct 与 Agent Loop —— <a href="https://wywzixin.github.io/agent/react-agent-loop/">https://wywzixin.github.io/agent/react-agent-loop/</a></li>
+<li>LLM 请求与流式响应 —— <a href="https://wywzixin.github.io/agent/llm-request-streaming/">https://wywzixin.github.io/agent/llm-request-streaming/</a></li>
+<li>Function Calling介绍 —— <a href="https://wywzixin.github.io/agent/function-calling/">https://wywzixin.github.io/agent/function-calling/</a></li>
+<li>MCP 协议与工具接入 —— <a href="https://wywzixin.github.io/agent/mcp-protocol/">https://wywzixin.github.io/agent/mcp-protocol/</a></li>
+</ul>
+</div><div class="article-licensing box"><div class="licensing-title"><p>Agent 记忆系统</p><p><a href="https://wywzixin.github.io/agent/memory-system/">https://wywzixin.github.io/agent/memory-system/</a></p></div><div class="licensing-meta level is-mobile"><div class="level-left"><div class="level-item is-narrow"><div><h6>作者</h6><p>wangyawei</p></div></div><div class="level-item is-narrow"><div><h6>发布于</h6><p>2026-09-15</p></div></div><div class="level-item is-narrow"><div><h6>更新于</h6><p>2026-09-15</p></div></div><div class="level-item is-narrow"><div><h6>许可协议</h6><p><a class="icons" rel="noopener" target="_blank" title="Creative Commons" href="https://creativecommons.org/"><i class="icon fab fa-creative-commons"></i></a><a class="icons" rel="noopener" target="_blank" title="Attribution" href="https://creativecommons.org/licenses/by/4.0/"><i class="icon fab fa-creative-commons-by"></i></a><a class="icons" rel="noopener" target="_blank" title="Noncommercial" href="https://creativecommons.org/licenses/by-nc/4.0/"><i class="icon fab fa-creative-commons-nc"></i></a></p></div></div></div></div></div><div class="article-tags is-size-7 mb-4"><span class="mr-2">#</span><a class="link-muted mr-2" rel="tag" href="/tags/agent/">agent</a><a class="link-muted mr-2" rel="tag" href="/tags/%E8%AE%B0%E5%BF%86%E7%B3%BB%E7%BB%9F/">记忆系统</a><a class="link-muted mr-2" rel="tag" href="/tags/%E4%B8%8A%E4%B8%8B%E6%96%87%E5%B7%A5%E7%A8%8B/">上下文工程</a></div><!--!--></article></div><!--!--><nav class="post-navigation mt-4 level is-mobile"><div class="level-start"><a class="article-nav-prev level level-item link-muted" href="/agent/context-compaction/"><i class="level-item fas fa-chevron-left"></i><span class="level-item">上下文压缩与 Token 管理</span></a></div><div class="level-end"><a class="article-nav-next level level-item link-muted" href="/agent/rag/"><span class="level-item">RAG 检索增强生成</span><i class="level-item fas fa-chevron-right"></i></a></div></nav><!--!--></div><div class="column column-left is-4-tablet is-4-desktop is-3-widescreen  order-1"><div class="card widget" data-type="profile"><div class="card-content"><nav class="level"><div class="level-item has-text-centered flex-shrink-1"><div><figure class="image is-128x128 mx-auto mb-2"><img class="avatar is-rounded" src="/img/avatar.svg" alt="王亚伟"></figure><p class="title is-size-4 is-block" style="line-height:inherit;">王亚伟</p><p class="is-size-6 is-block">3D · AI</p><p class="is-size-6 is-flex justify-content-center"><i class="fas fa-map-marker-alt mr-1"></i><span>北京</span></p></div></div></nav><nav class="level is-mobile"><div class="level-item has-text-centered is-marginless"><div><p class="heading">文章</p><a href="/archives/"><p class="title">55</p></a></div></div><div class="level-item has-text-centered is-marginless"><div><p class="heading">分类</p><a href="/categories/"><p class="title">9</p></a></div></div><div class="level-item has-text-centered is-marginless"><div><p class="heading">标签</p><a href="/tags/"><p class="title">64</p></a></div></div></nav><div class="level"><a class="level-item button is-primary is-rounded" href="https://github.com/wywzixin" target="_blank" rel="me noopener">关注我</a></div><div class="level is-mobile is-multiline"><a class="level-item button is-transparent is-marginless" target="_blank" rel="me noopener" title="Github" href="https://github.com/wywzixin"><i class="fab fa-github"></i></a><a class="level-item button is-transparent is-marginless" target="_blank" rel="me noopener" title="Facebook" href="https://facebook.com"><i class="fab fa-facebook"></i></a><a class="level-item button is-transparent is-marginless" target="_blank" rel="me noopener" title="Twitter" href="https://twitter.com"><i class="fab fa-twitter"></i></a><a class="level-item button is-transparent is-marginless" target="_blank" rel="me noopener" title="Dribbble" href="https://dribbble.com"><i class="fab fa-dribbble"></i></a><a class="level-item button is-transparent is-marginless" target="_blank" rel="me noopener" title="RSS" href="/"><i class="fas fa-rss"></i></a></div></div></div><!--!--><div class="card widget" data-type="categories"><div class="card-content"><div class="menu"><h3 class="menu-label">分类</h3><ul class="menu-list"><li><a class="level is-mobile" href="/categories/cesium/"><span class="level-start"><span class="level-item">cesium</span></span><span class="level-end"><span class="level-item tag">24</span></span></a></li><li><a class="level is-mobile" href="/categories/threejs/"><span class="level-start"><span class="level-item">threejs</span></span><span class="level-end"><span class="level-item tag">6</span></span></a></li><li><a class="level is-mobile" href="/categories/%E5%8C%97%E6%96%97%E7%BD%91%E6%A0%BC%E6%80%A7%E8%83%BD%E4%BC%98%E5%8C%96/"><span class="level-start"><span class="level-item">北斗网格性能优化</span></span><span class="level-end"><span class="level-item tag">7</span></span></a></li><li><a class="level is-mobile" href="/categories/%E5%9B%BE%E5%BD%A2%E5%AD%A6/"><span class="level-start"><span class="level-item">图形学</span></span><span class="level-end"><span class="level-item tag">1</span></span></a></li><li><a class="level is-mobile" href="/categories/vue/"><span class="level-start"><span class="level-item">vue</span></span><span class="level-end"><span class="level-item tag">2</span></span></a></li><li><a class="level is-mobile" href="/categories/agent/"><span class="level-start"><span class="level-item">agent</span></span><span class="level-end"><span class="level-item tag">8</span></span></a></li><li><a class="level is-mobile" href="/categories/claude-code/"><span class="level-start"><span class="level-item">claude code</span></span><span class="level-end"><span class="level-item tag">2</span></span></a></li><li><a class="level is-mobile" href="/categories/python/"><span class="level-start"><span class="level-item">python</span></span><span class="level-end"><span class="level-item tag">3</span></span></a></li><li><a class="level is-mobile" href="/categories/%E5%A4%A7%E6%A8%A1%E5%9E%8B/"><span class="level-start"><span class="level-item">大模型</span></span><span class="level-end"><span class="level-item tag">2</span></span></a></li></ul></div></div></div><div class="card widget" data-type="tags"><div class="card-content"><div class="menu"><h3 class="menu-label">标签</h3><div class="field is-grouped is-grouped-multiline"><div class="control"><a class="tags has-addons" href="/tags/Agent-Loop/"><span class="tag">Agent Loop</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/Cesium/"><span class="tag">Cesium</span><span class="tag">7</span></a></div><div class="control"><a class="tags has-addons" href="/tags/DrawCommand/"><span class="tag">DrawCommand</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/ENU/"><span class="tag">ENU</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/Embedding/"><span class="tag">Embedding</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/FAISS/"><span class="tag">FAISS</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/Function-Calling/"><span class="tag">Function Calling</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/GPT-3/"><span class="tag">GPT-3</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/GPU-Instancing/"><span class="tag">GPU Instancing</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/L6/"><span class="tag">L6</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/L7/"><span class="tag">L7</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/LLM/"><span class="tag">LLM</span><span class="tag">2</span></a></div><div class="control"><a class="tags has-addons" href="/tags/LOD/"><span class="tag">LOD</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/LRU/"><span class="tag">LRU</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/LangChain/"><span class="tag">LangChain</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/MCP/"><span class="tag">MCP</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/PBR/"><span class="tag">PBR</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/Pinecone/"><span class="tag">Pinecone</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/RAG/"><span class="tag">RAG</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/RTE/"><span class="tag">RTE</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/ReAct/"><span class="tag">ReAct</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/SSE/"><span class="tag">SSE</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/Shader/"><span class="tag">Shader</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/Token/"><span class="tag">Token</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/Transferable/"><span class="tag">Transferable</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/Transformer/"><span class="tag">Transformer</span><span class="tag">2</span></a></div><div class="control"><a class="tags has-addons" href="/tags/Web-Worker/"><span class="tag">Web Worker</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/WebGL/"><span class="tag">WebGL</span><span class="tag">2</span></a></div><div class="control"><a class="tags has-addons" href="/tags/agent/"><span class="tag">agent</span><span class="tag">8</span></a></div><div class="control"><a class="tags has-addons" href="/tags/asyncio/"><span class="tag">asyncio</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/cesium/"><span class="tag">cesium</span><span class="tag">24</span></a></div><div class="control"><a class="tags has-addons" href="/tags/claude-code/"><span class="tag">claude code</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/markstream/"><span class="tag">markstream</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/prompt-cache/"><span class="tag">prompt cache</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/python/"><span class="tag">python</span><span class="tag">3</span></a></div><div class="control"><a class="tags has-addons" href="/tags/threejs/"><span class="tag">threejs</span><span class="tag">6</span></a></div><div class="control"><a class="tags has-addons" href="/tags/vue/"><span class="tag">vue</span><span class="tag">2</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E4%B8%8A%E4%B8%8B%E6%96%87%E5%8E%8B%E7%BC%A9/"><span class="tag">上下文压缩</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E4%B8%8A%E4%B8%8B%E6%96%87%E5%B7%A5%E7%A8%8B/"><span class="tag">上下文工程</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E5%86%85%E5%AD%98%E7%AE%A1%E7%90%86/"><span class="tag">内存管理</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E5%8C%97%E6%96%97%E7%BD%91%E6%A0%BC/"><span class="tag">北斗网格</span><span class="tag">7</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E5%8F%82%E6%95%B0%E9%87%8F/"><span class="tag">参数量</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E5%90%8E%E5%A4%84%E7%90%86/"><span class="tag">后处理</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E5%90%91%E9%87%8F%E6%95%B0%E6%8D%AE%E5%BA%93/"><span class="tag">向量数据库</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E5%93%8D%E5%BA%94%E5%BC%8F%E5%8E%9F%E7%90%86/"><span class="tag">响应式原理</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E5%9B%BE%E5%BD%A2%E5%AD%A6/"><span class="tag">图形学</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E5%A4%9A%E5%A4%B4%E6%B3%A8%E6%84%8F%E5%8A%9B/"><span class="tag">多头注意力</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E5%A4%A7%E6%A8%A1%E5%9E%8B/"><span class="tag">大模型</span><span class="tag">2</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E5%B7%A5%E5%85%B7%E8%B0%83%E7%94%A8/"><span class="tag">工具调用</span><span class="tag">2</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E5%B9%B6%E5%8F%91/"><span class="tag">并发</span><span class="tag">2</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E6%9D%90%E8%B4%A8/"><span class="tag">材质</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E6%9E%B6%E6%9E%84%E8%AE%BE%E8%AE%A1/"><span class="tag">架构设计</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E6%A3%80%E7%B4%A2%E5%A2%9E%E5%BC%BA%E7%94%9F%E6%88%90/"><span class="tag">检索增强生成</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E6%B3%A8%E6%84%8F%E5%8A%9B%E6%9C%BA%E5%88%B6/"><span class="tag">注意力机制</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E6%B5%81%E5%BC%8F%E5%93%8D%E5%BA%94/"><span class="tag">流式响应</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E6%B5%81%E5%BC%8F%E6%B8%B2%E6%9F%93/"><span class="tag">流式渲染</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E7%A9%BA%E9%97%B4%E5%88%86%E5%9D%97/"><span class="tag">空间分块</span><span class="tag">2</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E7%BA%BF%E7%A8%8B%E6%B1%A0/"><span class="tag">线程池</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E7%BC%93%E5%AD%98/"><span class="tag">缓存</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E8%A7%86%E9%94%A5%E5%89%94%E9%99%A4/"><span class="tag">视锥剔除</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E8%AE%B0%E5%BF%86%E7%B3%BB%E7%BB%9F/"><span class="tag">记忆系统</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E8%BD%AE%E5%BB%93%E7%BA%BF/"><span class="tag">轮廓线</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E9%AB%98%E5%BA%A6%E5%88%87%E7%89%87/"><span class="tag">高度切片</span><span class="tag">1</span></a></div></div></div></div></div><div class="card widget" data-type="subscribe-email"><div class="card-content"><div class="menu"><h3 class="menu-label">订阅更新</h3><form action="https://feedburner.google.com/fb/a/mailverify" method="post" target="popupwindow" onsubmit="window.open(&#039;https://feedburner.google.com/fb/a/mailverify?uri=&#039;,&#039;popupwindow&#039;,&#039;scrollbars=yes,width=550,height=520&#039;);return true"><input type="hidden" value="" name="uri"><input type="hidden" name="loc" value="en_US"><div class="field has-addons"><div class="control has-icons-left is-expanded"><input class="input" name="email" type="email" placeholder="Email"><span class="icon is-small is-left"><i class="fas fa-envelope"></i></span></div><div class="control"><input class="button" type="submit" value="订阅"></div></div></form></div></div></div><div class="column-right-shadow is-hidden-widescreen"></div></div><div class="column column-right is-4-tablet is-4-desktop is-3-widescreen is-hidden-touch is-hidden-desktop-only order-3"><div class="card widget" data-type="recent-posts"><div class="card-content"><h3 class="menu-label">最新文章</h3><article class="media"><div class="media-content"><p class="date"><time dateTime="2026-09-15T00:00:00.000Z">2026-09-15</time></p><p class="title"><a href="/agent/llm-request-streaming/">LLM 请求与流式响应</a></p><p class="categories"><a href="/categories/agent/">agent</a></p></div></article><article class="media"><div class="media-content"><p class="date"><time dateTime="2026-09-14T23:00:00.000Z">2026-09-15</time></p><p class="title"><a href="/agent/react-agent-loop/">ReAct 与 Agent Loop</a></p><p class="categories"><a href="/categories/agent/">agent</a></p></div></article><article class="media"><div class="media-content"><p class="date"><time dateTime="2026-09-14T22:00:00.000Z">2026-09-15</time></p><p class="title"><a href="/agent/mcp-protocol/">MCP 协议与工具接入</a></p><p class="categories"><a href="/categories/agent/">agent</a></p></div></article><article class="media"><div class="media-content"><p class="date"><time dateTime="2026-09-14T21:00:00.000Z">2026-09-15</time></p><p class="title"><a href="/agent/function-calling/">Function Calling介绍</a></p><p class="categories"><a href="/categories/agent/">agent</a></p></div></article><article class="media"><div class="media-content"><p class="date"><time dateTime="2026-09-14T20:00:00.000Z">2026-09-15</time></p><p class="title"><a href="/agent/context-compaction/">上下文压缩与 Token 管理</a></p><p class="categories"><a href="/categories/agent/">agent</a></p></div></article></div></div><div class="card widget" data-type="archives"><div class="card-content"><div class="menu"><h3 class="menu-label">归档</h3><ul class="menu-list"><li><a class="level is-mobile" href="/archives/2026/09/"><span class="level-start"><span class="level-item">九月 2026</span></span><span class="level-end"><span class="level-item tag">25</span></span></a></li><li><a class="level is-mobile" href="/archives/2026/03/"><span class="level-start"><span class="level-item">三月 2026</span></span><span class="level-end"><span class="level-item tag">4</span></span></a></li><li><a class="level is-mobile" href="/archives/2025/03/"><span class="level-start"><span class="level-item">三月 2025</span></span><span class="level-end"><span class="level-item tag">25</span></span></a></li><li><a class="level is-mobile" href="/archives/2025/01/"><span class="level-start"><span class="level-item">一月 2025</span></span><span class="level-end"><span class="level-item tag">1</span></span></a></li></ul></div></div></div></div></div></div></section><footer class="footer"><div class="container"><div class="level"><div class="level-start"><a class="footer-logo is-block mb-2" href="/"><img src="/img/logo.svg" alt="Hexo" height="28"></a><p class="is-size-7"><span>&copy; 2026 wangyawei</span>  Powered by <a href="https://hexo.io/" target="_blank" rel="noopener">Hexo</a> &amp; <a href="https://github.com/ppoffice/hexo-theme-icarus" target="_blank" rel="noopener">Icarus</a></p><p class="is-size-7">© 2019</p></div><div class="level-end"><div class="field has-addons"><p class="control"><a class="button is-transparent is-large" target="_blank" rel="noopener" title="Creative Commons" href="https://creativecommons.org/"><i class="fab fa-creative-commons"></i></a></p><p class="control"><a class="button is-transparent is-large" target="_blank" rel="noopener" title="Attribution 4.0 International" href="https://creativecommons.org/licenses/by/4.0/"><i class="fab fa-creative-commons-by"></i></a></p><p class="control"><a class="button is-transparent is-large" target="_blank" rel="noopener" title="Download on GitHub" href="https://github.com/ppoffice/hexo-theme-icarus"><i class="fab fa-github"></i></a></p></div></div></div></div></footer><script src="https://cdn.jsdelivr.net/npm/jquery@3.3.1/dist/jquery.min.js"></script><script src="https://cdn.jsdelivr.net/npm/moment@2.22.2/min/moment-with-locales.min.js"></script><script src="https://cdn.jsdelivr.net/npm/clipboard@2.0.4/dist/clipboard.min.js" defer></script><script>moment.locale("zh-cn");</script><script>var IcarusThemeSettings = {
+            article: {
+                highlight: {
+                    clipboard: true,
+                    fold: 'unfolded'
+                }
+            }
+        };</script><script data-pjax src="/js/column.js"></script><a id="back-to-top" title="回到顶端" href="javascript:;"><i class="fas fa-chevron-up"></i></a><script data-pjax src="/js/back_to_top.js" defer></script><!--!--><!--!--><!--!--><script src="https://cdn.jsdelivr.net/npm/cookieconsent@3.1.1/build/cookieconsent.min.js" defer></script><script>window.addEventListener("load", () => {
+      window.cookieconsent.initialise({
+        type: "info",
+        theme: "edgeless",
+        static: false,
+        position: "bottom-left",
+        content: {
+          message: "此网站使用Cookie来改善您的体验。",
+          dismiss: "知道了！",
+          allow: "允许使用Cookie",
+          deny: "拒绝",
+          link: "了解更多",
+          policy: "Cookie政策",
+          href: "https://www.cookiesandyou.com/",
+        },
+        palette: {
+          popup: {
+            background: "#edeff5",
+            text: "#838391"
+          },
+          button: {
+            background: "#4b81e8"
+          },
+        },
+      });
+    });</script><script src="https://cdn.jsdelivr.net/npm/lightgallery@1.10.0/dist/js/lightgallery.min.js" defer></script><script src="https://cdn.jsdelivr.net/npm/justifiedGallery@3.8.1/dist/js/jquery.justifiedGallery.min.js" defer></script><script>window.addEventListener("load", () => {
+            if (typeof $.fn.lightGallery === 'function') {
+                $('.article').lightGallery({ selector: '.gallery-item' });
+            }
+            if (typeof $.fn.justifiedGallery === 'function') {
+                if ($('.justified-gallery > p > .gallery-item').length) {
+                    $('.justified-gallery > p > .gallery-item').unwrap();
+                }
+                $('.justified-gallery').justifiedGallery();
+            }
+        });</script><!--!--><!--!--><script src="https://cdn.jsdelivr.net/npm/pjax@0.2.8/pjax.min.js"></script><script src="/js/pjax.js"></script><!--!--><!--!--><!--!--><script data-pjax src="/js/main.js" defer></script><div class="searchbox"><div class="searchbox-container"><div class="searchbox-header"><div class="searchbox-input-container"><input class="searchbox-input" type="text" placeholder="想要查找什么..."></div><a class="searchbox-close" href="javascript:;">×</a></div><div class="searchbox-body"></div></div></div><script data-pjax src="/js/insight.js" defer></script><script data-pjax>document.addEventListener('DOMContentLoaded', function () {
+            loadInsight({"contentUrl":"/content.json"}, {"hint":"想要查找什么...","untitled":"(无标题)","posts":"文章","pages":"页面","categories":"分类","tags":"标签"});
+        });</script></body></html>

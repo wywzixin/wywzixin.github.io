@@ -1,0 +1,384 @@
+<!doctype html>
+<html lang="zh"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1"><meta><meta name="referrer" content="no-referrer"><title>RAG 检索增强生成 - Hexo</title><link rel="manifest" href="/manifest.json"><meta name="application-name" content="Hexo"><meta name="msapplication-TileImage" content="/img/favicon.svg"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="Hexo"><meta name="apple-mobile-web-app-status-bar-style" content="default"><meta name="description" content="RAG 是在生成之前先检索：把用户的问题拿去知识库捞出相关片段，和问题拼成新的输入，再交给模型。整个过程不训练、不改模型的一个参数。这篇讲清它和提示工程、微调的分工，Indexing &amp;#x2F; Retrieval &amp;#x2F; Generation 三步各自的坑（分块的两难、为什么要 rerank、Top-K 怎么定），以及那句最该记住的话——RAG 本质上是一次 prompt 重构。"><meta property="og:type" content="blog"><meta property="og:title" content="RAG 检索增强生成"><meta property="og:url" content="https://wywzixin.github.io/agent/rag/"><meta property="og:site_name" content="Hexo"><meta property="og:description" content="RAG 是在生成之前先检索：把用户的问题拿去知识库捞出相关片段，和问题拼成新的输入，再交给模型。整个过程不训练、不改模型的一个参数。这篇讲清它和提示工程、微调的分工，Indexing &amp;#x2F; Retrieval &amp;#x2F; Generation 三步各自的坑（分块的两难、为什么要 rerank、Top-K 怎么定），以及那句最该记住的话——RAG 本质上是一次 prompt 重构。"><meta property="og:locale" content="zh_CN"><meta property="og:image" content="https://wywzixin.github.io/img/og_image.png"><meta property="article:published_time" content="2026-09-14T18:00:00.000Z"><meta property="article:modified_time" content="2026-09-14T17:19:06.151Z"><meta property="article:author" content="wangyawei"><meta property="article:tag" content="agent"><meta property="article:tag" content="RAG"><meta property="article:tag" content="检索增强生成"><meta property="article:tag" content="Embedding"><meta property="twitter:card" content="summary"><meta property="twitter:image:src" content="https://wywzixin.github.io/img/og_image.png"><script type="application/ld+json">{"@context":"https://schema.org","@type":"BlogPosting","mainEntityOfPage":{"@type":"WebPage","@id":"https://wywzixin.github.io/agent/rag/"},"headline":"RAG 检索增强生成","image":["https://wywzixin.github.io/img/og_image.png"],"datePublished":"2026-09-14T18:00:00.000Z","dateModified":"2026-09-14T17:19:06.151Z","author":{"@type":"Person","name":"wangyawei"},"publisher":{"@type":"Organization","name":"Hexo","logo":{"@type":"ImageObject","url":"https://wywzixin.github.io/img/logo.svg"}},"description":"RAG 是在生成之前先检索：把用户的问题拿去知识库捞出相关片段，和问题拼成新的输入，再交给模型。整个过程不训练、不改模型的一个参数。这篇讲清它和提示工程、微调的分工，Indexing &#x2F; Retrieval &#x2F; Generation 三步各自的坑（分块的两难、为什么要 rerank、Top-K 怎么定），以及那句最该记住的话——RAG 本质上是一次 prompt 重构。"}</script><link rel="canonical" href="https://wywzixin.github.io/agent/rag/"><link rel="icon" href="/img/favicon.svg"><style>html,body{background:#f7f7f7}</style><link rel="stylesheet" href="https://use.fontawesome.com/releases/v6.0.0/css/all.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js@11.7.0/styles/atom-one-dark.css"><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Ubuntu:wght@400;600&amp;family=Source+Code+Pro"><link rel="stylesheet" href="/css/default.css"><!--!--><!--!--><!--!--><!--!--><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/cookieconsent@3.1.1/build/cookieconsent.min.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/lightgallery@1.10.0/dist/css/lightgallery.min.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/justifiedGallery@3.8.1/dist/css/justifiedGallery.min.css"><!--!--><!--!--><!--!--><style>.pace{-webkit-pointer-events:none;pointer-events:none;-webkit-user-select:none;-moz-user-select:none;user-select:none}.pace-inactive{display:none}.pace .pace-progress{background:#3273dc;position:fixed;z-index:2000;top:0;right:100%;width:100%;height:2px}</style><script src="https://cdn.jsdelivr.net/npm/pace-js@1.2.4/pace.min.js"></script><!--!--><!--!--><!-- hexo injector head_end start --><script>
+  (function () {
+      function switchTab() {
+          if (!location.hash) {
+            return;
+          }
+
+          const id = '#' + CSS.escape(location.hash.substring(1));
+          const $tabMenu = document.querySelector(`.tabs a[href="${id}"]`);
+          if (!$tabMenu) {
+            return;
+          }
+
+          const $tabMenuContainer = $tabMenu.parentElement.parentElement;
+          Array.from($tabMenuContainer.children).forEach($menu => $menu.classList.remove('is-active'));
+          Array.from($tabMenuContainer.querySelectorAll('a'))
+              .map($menu => document.getElementById($menu.getAttribute("href").substring(1)))
+              .forEach($content => $content.classList.add('is-hidden'));
+
+          if ($tabMenu) {
+              $tabMenu.parentElement.classList.add('is-active');
+          }
+          const $activeTab = document.querySelector(id);
+          if ($activeTab) {
+              $activeTab.classList.remove('is-hidden');
+          }
+      }
+      switchTab();
+      window.addEventListener('hashchange', switchTab, false);
+  })();
+  </script><!-- hexo injector head_end end --><meta name="generator" content="Hexo 7.3.0"></head><body class="is-3-column"><nav class="navbar navbar-main"><div class="container navbar-container"><div class="navbar-brand justify-content-center"><a class="navbar-item navbar-logo" href="/"><img src="/img/logo.svg" alt="Hexo" height="28"></a></div><div class="navbar-menu"><div class="navbar-start"><a class="navbar-item" href="/">首页</a><a class="navbar-item" href="/archives">归档</a><a class="navbar-item" href="/categories">分类</a><a class="navbar-item" href="/tags">标签</a><a class="navbar-item" href="/about">关于</a></div><div class="navbar-end"><a class="navbar-item" target="_blank" rel="noopener" title="Download on GitHub" href="https://github.com/ppoffice/hexo-theme-icarus"><i class="fab fa-github"></i></a><a class="navbar-item search" title="搜索" href="javascript:;"><i class="fas fa-search"></i></a></div></div></div></nav><section class="section"><div class="container"><div class="columns"><div class="column order-2 column-main is-8-tablet is-8-desktop is-6-widescreen"><div class="card"><article class="card-content article" role="article"><div class="article-meta is-size-7 is-uppercase level is-mobile"><div class="level-left"><span class="level-item"><time dateTime="2026-09-14T18:00:00.000Z" title="2026/9/15 02:00:00">2026-09-15</time>发表</span><span class="level-item"><time dateTime="2026-09-14T17:19:06.151Z" title="2026/9/15 01:19:06">2026-09-15</time>更新</span><span class="level-item"><a class="link-muted" href="/categories/agent/">agent</a></span><span class="level-item">40 分钟读完 (大约5963个字)</span></div></div><h1 class="title is-3 is-size-4-mobile">RAG 检索增强生成</h1><div class="content"><p><strong>RAG（Retrieval-Augmented Generation，检索增强生成）是在生成之前先检索：拿用户的问题去知识库里捞出相关片段，把这些片段和问题一起拼成新的输入，再交给模型生成回答。</strong></p>
+<p>它结合了两件事：<strong>信息检索</strong>（Retrieval）负责从外部知识库找材料，<strong>文本生成</strong>（Generation）负责把材料组织成回答。</p>
+<p>注意这里没有发生的事：<strong>没有训练，没有改模型的任何一个参数。</strong> 模型拿到的还是那一段文字，只是这段文字里多了它本来不知道的东西。</p>
+<p>这是理解 RAG 的关键，也是它所有优点和缺点的来源。最后 §6 会回到这一点上：<strong>RAG 本质上是一次 prompt 重构。</strong></p>
+<span id="more"></span>
+
+<h2 id="1-提示工程、RAG、微调：先分清该用哪个"><a href="#1-提示工程、RAG、微调：先分清该用哪个" class="headerlink" title="1. 提示工程、RAG、微调：先分清该用哪个"></a>1. 提示工程、RAG、微调：先分清该用哪个</h2><p>模型的能力来自海量知识的预训练——喂进去海量文本，出来一个具备各种能力的 AI。</p>
+<p>但你用起来还是会拿到错误回复。这时候该上什么？<strong>先别急着选方案，先分清是哪种错。</strong></p>
+<table>
+<thead>
+<tr>
+<th>症状</th>
+<th>缺什么</th>
+<th>对策</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>没问清楚</strong></td>
+<td>指令不明确，模型不知道你要什么</td>
+<td><strong>提示工程</strong></td>
+</tr>
+<tr>
+<td><strong>缺乏背景知识</strong></td>
+<td>模型不知道你的事（你的库、你的文档、昨天的新闻）</td>
+<td><strong>RAG</strong></td>
+</tr>
+<tr>
+<td><strong>能力不足</strong></td>
+<td>模型本身做不到这件事</td>
+<td><strong>微调</strong></td>
+</tr>
+</tbody></table>
+<p>三条不是同一层级的三个档位，是三个不同的问题：</p>
+<ul>
+<li><strong>提示工程改的是输入的表达方式。</strong> 模型本来就会，你只是换了个说法让它做对。</li>
+<li><strong>RAG 改的是输入的来源。</strong> 模型不知道的事，检索出来塞给它。</li>
+<li><strong>微调改的是模型本身。</strong> 不是它不知道什么，是<strong>它不知道该怎么做</strong>——格式、风格、领域里的细微判断。</li>
+</ul>
+<h3 id="一个够用的判据"><a href="#一个够用的判据" class="headerlink" title="一个够用的判据"></a>一个够用的判据</h3><p><strong>这个问题的答案，写在某份文档里吗？</strong></p>
+<ul>
+<li><strong>在</strong> → 用 <strong>RAG</strong>。答案存在，只是模型没见过，检索到就行，不需要训练。</li>
+<li><strong>不在，你要的是它形成某种习惯</strong>（固定输出格式、特定口吻、领域里的隐含规则）→ 用<strong>微调</strong>。</li>
+<li><strong>两个都不是，只是你没说清</strong> → 用<strong>提示工程</strong>。</li>
+</ul>
+<p>判据的价值在于它把「RAG 还是微调」这个常见纠结变成了一个可查证的问题：<strong>去翻文档，看答案在不在里面。</strong></p>
+<h3 id="代价差一个数量级"><a href="#代价差一个数量级" class="headerlink" title="代价差一个数量级"></a>代价差一个数量级</h3><table>
+<thead>
+<tr>
+<th></th>
+<th>改什么</th>
+<th>迭代速度</th>
+<th>成本</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>提示工程</strong></td>
+<td>输入文本</td>
+<td>秒级</td>
+<td>近乎为零</td>
+</tr>
+<tr>
+<td><strong>RAG</strong></td>
+<td>输入文本 + 一套检索系统</td>
+<td>小时～天级（重建索引）</td>
+<td>一次工程建设 + 持续维护</td>
+</tr>
+<tr>
+<td><strong>微调</strong></td>
+<td>模型的权重</td>
+<td>天～周级</td>
+<td>训练算力 + 标注数据 + 一套部署</td>
+</tr>
+</tbody></table>
+<p>所以顺序是：<strong>能靠提示工程解决就别上 RAG，能靠 RAG 解决就别微调。</strong> 这不是因为它们谁更高级，是因为代价差一个数量级。</p>
+<p>而且三者是<strong>叠加</strong>关系，不是三选一。真实系统里通常三层都在：提示词写清楚任务、RAG 供上材料、微调过的模型保证输出格式稳定。</p>
+<h2 id="2-什么是-RAG"><a href="#2-什么是-RAG" class="headerlink" title="2. 什么是 RAG"></a>2. 什么是 RAG</h2><p>最简的那张流程图：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line">Question</span><br><span class="line">   ↓</span><br><span class="line">Retriever ←→ Context</span><br><span class="line">   ↓</span><br><span class="line">Large Language Model</span><br><span class="line">   ↓</span><br><span class="line">Response</span><br></pre></td></tr></table></figure>
+
+<p>这个图的形状很简单，但值得多看一眼：<strong>问题的流向没变，只是中途插了一步取材料。</strong></p>
+<p>Retriever 和 Context 之间是双向箭头——它要去知识库里查。查完的结果，和原来的问题一起进模型。</p>
+<h3 id="拆开就是三步"><a href="#拆开就是三步" class="headerlink" title="拆开就是三步"></a>拆开就是三步</h3><p>一个常被引用的划分方式：</p>
+<table>
+<thead>
+<tr>
+<th>步骤</th>
+<th>要解决的问题</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>Indexing</strong>（索引）</td>
+<td>如何更好地把知识<strong>存</strong>起来</td>
+</tr>
+<tr>
+<td><strong>Retrieval</strong>（检索）</td>
+<td>如何在大量知识中<strong>找到</strong>一小部分有用的，给到模型参考</td>
+</tr>
+<tr>
+<td><strong>Generation</strong>（生成）</td>
+<td>如何结合用户的提问和检索到的知识，让模型生成<strong>有用的答案</strong></td>
+</tr>
+</tbody></table>
+<p>三步看起来都很直白。但真做起来，<strong>每一步都有它自己的两难</strong>：分块要在语义完整和检索效率之间取舍，检索要在召回广度和精排准度之间取舍，生成要在「只依据材料回答」和「材料不够时怎么办」之间取舍。后面三节分别拆。</p>
+<h3 id="一个准确的比喻"><a href="#一个准确的比喻" class="headerlink" title="一个准确的比喻"></a>一个准确的比喻</h3><p><strong>LLM 是推理引擎，是大脑；RAG 是外挂，是硬盘、U 盘、记事本。</strong></p>
+<p>这个比喻好在它说清了分工：<strong>大脑负责想，外挂负责记。</strong> 外挂换一个，不影响大脑；大脑换一个，外挂还能接着用。</p>
+<p>而它顺带解释了 RAG 为什么诱人：<strong>你没动大脑，只是给它配了个能随时翻的记事本。</strong> 想让模型知道新东西，不用重新训练——往记事本上写一页就行。</p>
+<h2 id="3-三个优势，一个来源"><a href="#3-三个优势，一个来源" class="headerlink" title="3. 三个优势，一个来源"></a>3. 三个优势，一个来源</h2><p>RAG 常被列出的三个优势：</p>
+<p><strong>一、解决知识时效性问题。</strong> 模型的训练数据是静态的，停在了某个时间点；RAG 检索的是外部知识库，知识库随时更新，模型就随时知道。</p>
+<p><strong>二、减少模型幻觉。</strong> 通过引入外部知识，模型可以照着材料说，而不是从记忆里回忆，生成虚假内容的概率下降。</p>
+<p><strong>三、提升专业领域回答质量。</strong> 接上垂直领域的知识库——法律、医疗、你公司内部的接口文档——回答就有了专业深度，而这些东西本来不在训练数据里。</p>
+<h3 id="但这三点其实是同一个机制"><a href="#但这三点其实是同一个机制" class="headerlink" title="但这三点其实是同一个机制"></a>但这三点其实是同一个机制</h3><p><strong>三个优势来自同一处：生成的时候，模型手里多了一份带出处的事实。</strong></p>
+<ul>
+<li>时效性，是因为知识库能随时更新，而权重不能</li>
+<li>幻觉减少，是因为模型在<strong>照着看</strong>，不是在<strong>回忆</strong></li>
+<li>专业性，是因为知识库可以是任何领域的，不需要它出现在训练数据里</li>
+</ul>
+<p>理解了这一点，就能理解它的边界——<strong>同一个机制，也是它所有缺点的来源。</strong></p>
+<h3 id="一个诚实的补充"><a href="#一个诚实的补充" class="headerlink" title="一个诚实的补充"></a>一个诚实的补充</h3><p><strong>RAG 减少幻觉，但不消除幻觉。</strong></p>
+<p>有两种情况会让幻觉换个形式回来：</p>
+<ul>
+<li><strong>检索错了。</strong> 捞回来的材料本身就是错的、或者答非所问。模型照着错材料说，产出依然错误——只是从「凭记忆编」变成了「拿着错材料编」。</li>
+<li><strong>模型无视材料。</strong> 提示词没写清「只依据资料回答」，模型可能检索结果摆在眼前，还是按自己的记忆答。</li>
+</ul>
+<p>所以上 RAG 之后要做的事变了：<strong>幻觉的锅有一部分转移到了检索质量上。</strong> 这就是 §5 要解决的问题。</p>
+<h2 id="4-Indexing：怎么把知识存进去"><a href="#4-Indexing：怎么把知识存进去" class="headerlink" title="4. Indexing：怎么把知识存进去"></a>4. Indexing：怎么把知识存进去</h2><h3 id="收集，然后切块"><a href="#收集，然后切块" class="headerlink" title="收集，然后切块"></a>收集，然后切块</h3><p>第一步是把散落的知识收拢：文档、网页、数据库、工单记录，多源数据整理成一个外部知识库。</p>
+<p>然后<strong>把文档切成适当大小的片段（chunks）</strong>。这一步叫分块，它看起来最没技术含量，实际最容易出问题。</p>
+<p>分块的两难：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line">块太小                                    块太大</span><br><span class="line">  ↓                                         ↓</span><br><span class="line">语义不完整                              噪声太多</span><br><span class="line">检索回来的一段话，                       一个块里只有一句</span><br><span class="line">本身读不懂                               有用，其余全是干扰</span><br><span class="line">  ↓                                         ↓</span><br><span class="line">                ↕ 要在两者之间平衡</span><br></pre></td></tr></table></figure>
+
+<ul>
+<li><strong>块切太小</strong>：检索回来的片段本身读不懂。代词没指代对象（「它的配置在……」，它是谁？），前提条件在上一块里，模型拿到半截话没法用。</li>
+<li><strong>块切太大</strong>：一个块里杂着好几个话题，真正有用的只有一句。噪声进上下文既干扰判断，又白占 token。</li>
+</ul>
+<p>常见的折中是<strong>按语义边界切</strong>——段落、小节、标题层级，而不是按固定字符数硬切。再带上一部分重叠，避免把一句话从中间切断。</p>
+<p>还有一个<strong>容易被忽略的硬约束</strong>：块的大小还受 <strong>embedding 模型的输入长度限制</strong>。不少中文 embedding 模型最大只吃 512 token（§7），超过就直接截断——切块切到 1000 字，后半段压根没进向量。</p>
+<p><strong>所以分块不是纯语义问题，也是模型约束问题。选 embedding 模型和定分块策略，是同一个决定的两半。</strong></p>
+<h3 id="向量化：把语义变成坐标"><a href="#向量化：把语义变成坐标" class="headerlink" title="向量化：把语义变成坐标"></a>向量化：把语义变成坐标</h3><p>用嵌入模型（embedding model）把每个文本块转成一个向量，存进向量数据库：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line">文档</span><br><span class="line"> ↓</span><br><span class="line">切 Chunk</span><br><span class="line"> ↓</span><br><span class="line">Embedding（语义理解）</span><br><span class="line"> ↓</span><br><span class="line">向量索引</span><br></pre></td></tr></table></figure>
+
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">原始数据 chunk（几个句子）</span><br><span class="line">  =&gt; embedding（语义理解）</span><br><span class="line">  =&gt; 向量数据库</span><br><span class="line">  =&gt; 语义相似度的检索</span><br></pre></td></tr></table></figure>
+
+<p><strong>这一步是 RAG 里最关键的转换：embedding 之后，「语义相似」变成了「向量距离近」。</strong></p>
+<p>检索于是变成一个几何问题——把问题也转成向量，去找离它最近的那些块。<strong>「找资料」这件事被翻译成了「找邻居」。</strong></p>
+<h3 id="为什么不用关键词搜"><a href="#为什么不用关键词搜" class="headerlink" title="为什么不用关键词搜"></a>为什么不用关键词搜</h3><p>因为<strong>同义不同词</strong>。</p>
+<p>「怎么重置密码」和「账号登录不上怎么办」，字面几乎不重合，关键词检索（BM25）会漏掉后者。但语义上它们是同一件事，向量空间里离得很近。</p>
+<p><strong>但关键词检索也有它的长处</strong>：碰到专有名词、错误码、函数名这种必须精确匹配的东西，向量检索反而会「飘」——它觉得 <code>ERR_4012</code> 和 <code>ERR_4013</code> 语义很像。</p>
+<p>所以生产系统里常见的是<strong>混合检索（hybrid retrieval）</strong>：向量一路、关键词一路，两路各自召回，再合并排序。<strong>一路管「意思像」，一路管「字对得上」。</strong></p>
+<p>BGE-M3 就是把这个思路做进了一个模型——同时输出 dense、sparse、多向量三种表示（§7）。</p>
+<h2 id="5-Retrieval：怎么在大量知识里找到那一小部分"><a href="#5-Retrieval：怎么在大量知识里找到那一小部分" class="headerlink" title="5. Retrieval：怎么在大量知识里找到那一小部分"></a>5. Retrieval：怎么在大量知识里找到那一小部分</h2><h3 id="先转成向量，再比距离"><a href="#先转成向量，再比距离" class="headerlink" title="先转成向量，再比距离"></a>先转成向量，再比距离</h3><p><strong>查询处理</strong>：把用户输入的问题用<strong>同一个</strong>嵌入模型转成向量，然后在向量数据库里做相似度检索，取出最相关的若干片段。</p>
+<p><strong>「同一个模型」是关键。</strong> 问题向量和文档向量必须在同一个坐标系里，距离才有意义。换模型等于换坐标系——这一点后面 §7 还会再提一次，它有个很实际的后果。</p>
+<h3 id="但「最近」不等于「最相关」"><a href="#但「最近」不等于「最相关」" class="headerlink" title="但「最近」不等于「最相关」"></a>但「最近」不等于「最相关」</h3><p>只靠向量检索有一层天花板，原因在它的设计取舍：</p>
+<p><strong>向量检索为了快，把 query 和 doc 分开编码。</strong> 问题和文档各自独立地转成向量，中间从来没有「见过面」。代价是它只能比<strong>整体语义像不像</strong>，比不了<strong>细节是不是真的对得上</strong>。</p>
+<p>举个例子：问「Go 里怎么等一组 goroutine 跑完」，检索回来一批讲 <code>WaitGroup</code> 的块。它们语义上都高度相关——<strong>但其中一个的代码是错的</strong>（<code>wg.Add</code> 写在了 <code>go</code> 后面）。光看向量距离，它和正确的那个块几乎一样近。</p>
+<p><strong>语义相似性判断不出对错。</strong> 所以需要第二阶段。</p>
+<h3 id="两阶段：召回要广度，精排要准度"><a href="#两阶段：召回要广度，精排要准度" class="headerlink" title="两阶段：召回要广度，精排要准度"></a>两阶段：召回要广度，精排要准度</h3><p>这就是<strong>重排序（Rerank）</strong>：</p>
+<table>
+<thead>
+<tr>
+<th>阶段</th>
+<th>做什么</th>
+<th>用什么</th>
+<th>特点</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>召回</strong></td>
+<td>从全库里取出 Top-K 候选（比如 50 条）</td>
+<td>向量检索（bi-encoder）</td>
+<td><strong>快，但糙</strong></td>
+</tr>
+<tr>
+<td><strong>精排</strong></td>
+<td>给这 50 条重新打分，取 Top-N（比如 5 条）</td>
+<td>重排序模型（cross-encoder）</td>
+<td><strong>慢，但准</strong></td>
+</tr>
+</tbody></table>
+<p>差别在编码方式：reranker 把 <strong>query 和候选文档拼在一起</strong>送进模型，让它们真正「见面」再打分。所以它能判断细节对不对得上，而 bi-encoder 不能。</p>
+<p>代价是它没法预先算好——每个候选都要现算一次，几十条就是几十次推理。<strong>所以它承担不了全库检索，只适合给召回结果做精排。</strong></p>
+<p>这个分工跟很多系统的形状一样：<strong>第一段管别漏（广度），第二段管别错（准度）。</strong></p>
+<h3 id="Top-K-是第一个该调的旋钮"><a href="#Top-K-是第一个该调的旋钮" class="headerlink" title="Top-K 是第一个该调的旋钮"></a>Top-K 是第一个该调的旋钮</h3><p>笔记里写的是 <strong>Top5</strong>。这是个合理的默认值，但它是个<strong>要调的参数</strong>，不是常数：</p>
+<ul>
+<li><strong>取太少</strong> —— 关键材料没被选进来，模型手里没有答案，只能编（回到 §3 的幻觉问题）</li>
+<li><strong>取太多</strong> —— 噪声一起送进去，还白占上下文预算，挤掉真正有用的那几条</li>
+</ul>
+<p>实际调的时候，召回和精排的 K 要分开调：<strong>召回层可以慷慨一点</strong>（50 甚至 100，反正便宜），<strong>精排层再收紧</strong>（3～5 条）。因为精排的目的本来就是「从一堆像的里面挑出对的」。</p>
+<h3 id="再进一步：把检索做成工具"><a href="#再进一步：把检索做成工具" class="headerlink" title="再进一步：把检索做成工具"></a>再进一步：把检索做成工具</h3><p>上面讲的是一条固定流水线——<strong>每次都检索</strong>。</p>
+<p>真放进 Agent 里，更常见的做法是<strong>把检索本身做成一个工具</strong>：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">@register_tool(<span class="params"><span class="string">&quot;search_knowledge_base&quot;</span></span>)</span></span><br><span class="line"><span class="keyword">def</span> <span class="title function_">search_knowledge_base</span>(<span class="params">query: <span class="built_in">str</span>, top_k: <span class="built_in">int</span> = <span class="number">5</span></span>) -&gt; <span class="built_in">str</span>:</span><br><span class="line">    <span class="string">&quot;&quot;&quot;在项目知识库里检索相关片段&quot;&quot;&quot;</span></span><br></pre></td></tr></table></figure>
+
+<p>这样模型自己决定：<strong>要不要检索、用什么 query 检索、检索几次。</strong></p>
+<p>这个自由度是有用的。「你好」不该触发一次全库检索；「这个报错怎么修」必须触发。而同一个问题，模型自己改写出来的 query 往往比用户原话更适合检索——用户说的是现象，检索要的是术语。</p>
+<p>注意这里发生的事：<strong>RAG 从一条流水线，变成了模型手里的一个工具。</strong></p>
+<p>也就是说检索本身也是一次 Function Calling（<a href="/agent/function-calling/">Function Calling介绍</a> §4），所以它也守同一条原则——<strong>一个工具 &#x3D; 一次外部动作</strong>。查知识库是一次外部动作，模型自己答不出来，符合这个标准。</p>
+<p>而这其实是「重构 prompt」更彻底的版本：<strong>连要不要检索、检索什么，都交给模型决定了。</strong></p>
+<h2 id="6-Generation：怎么组装出那个新-Prompt"><a href="#6-Generation：怎么组装出那个新-Prompt" class="headerlink" title="6. Generation：怎么组装出那个新 Prompt"></a>6. Generation：怎么组装出那个新 Prompt</h2><p>最后一步是把材料拼成输入。所谓「上下文组装」，字面意思就是拼字符串：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line">你是客服助手，只根据下面的资料回答，资料里没有的就说不知道。</span><br><span class="line"></span><br><span class="line">## 参考资料</span><br><span class="line">[1] 重置密码：登录页点「忘记密码」，输入注册邮箱，去邮件里点链接……</span><br><span class="line">[2] 密码规则：至少 8 位，需同时包含字母和数字……</span><br><span class="line"></span><br><span class="line">## 用户问题</span><br><span class="line">我密码忘了怎么办？</span><br></pre></td></tr></table></figure>
+
+<p>模型读的是这一段，然后生成回答。</p>
+<h3 id="那句话"><a href="#那句话" class="headerlink" title="那句话"></a>那句话</h3><p>到这里可以回到开头那句话了：</p>
+<blockquote>
+<p><strong>RAG 本质上，是重构了新的 prompt。</strong></p>
+</blockquote>
+<p>写成流转关系就是：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line">用户原问题</span><br><span class="line">   +</span><br><span class="line">检索出来的知识</span><br><span class="line">   ↓</span><br><span class="line">构造成一个新的 Prompt</span><br><span class="line">   ↓</span><br><span class="line">交给 LLM</span><br></pre></td></tr></table></figure>
+
+<p><code>user prompt</code> → <code>rag based user prompt</code>。</p>
+<p><strong>这句话值得记住，因为它一次解释了三件事。</strong></p>
+<p><strong>一、它解释了 RAG 为什么不需要训练。</strong> 换知识库不用重新训练模型，因为改的只是拼进 prompt 的那段文本。<strong>模型没变，输入变了。</strong></p>
+<p><strong>二、它解释了 RAG 的能力边界。</strong> 模型在 prompt 里已有的能力就是天花板——如果它读不懂那份材料，或者不会按材料回答，RAG 救不了。那是<strong>能力不足</strong>，是 §1 里微调要解决的问题。<strong>RAG 只能给它材料，给不了它本事。</strong></p>
+<p><strong>三、它解释了 RAG 的主要失败模式。</strong> 两种失败都发生在「拼」这一步：</p>
+<table>
+<thead>
+<tr>
+<th>失败</th>
+<th>根因</th>
+<th>在哪一步</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>材料就是错的</td>
+<td>检索错了 &#x2F; 分块切坏了</td>
+<td>§4、§5</td>
+</tr>
+<tr>
+<td>材料是对的，模型不照做</td>
+<td>指令没写清「只依据资料回答」</td>
+<td>§6</td>
+</tr>
+</tbody></table>
+<p>第二种经常被忽略。<strong>检索做得再准，提示词里缺了那句约束，模型照样可以无视材料自己编。</strong></p>
+<p>所以一句话总结：<strong>RAG 没有让模型变聪明，它让模型在做这道题的时候，把参考书翻开了。</strong> 而参考书翻得对不对、你是不是叮嘱了它只准照书答——<strong>这两件事都得你自己管。</strong></p>
+<h2 id="7-Embedding-模型怎么选"><a href="#7-Embedding-模型怎么选" class="headerlink" title="7. Embedding 模型怎么选"></a>7. Embedding 模型怎么选</h2><table>
+<thead>
+<tr>
+<th>模型</th>
+<th>最大输入</th>
+<th>语言</th>
+<th>特点</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>BGE-M3</strong>（智源）</td>
+<td>8192</td>
+<td>100+</td>
+<td>dense + sparse + 多向量三合一，一个模型给全套混合检索</td>
+</tr>
+<tr>
+<td><strong>text-embedding-3-large</strong>（OpenAI）</td>
+<td>8191</td>
+<td>多语言</td>
+<td>3072 维，长文本语义捕捉强，英文表现优秀</td>
+</tr>
+<tr>
+<td><strong>jina-embeddings-v2-small-en</strong>（Jina AI）</td>
+<td>8192</td>
+<td>英文</td>
+<td>仅约 3300 万参数，轻量、适合实时推理</td>
+</tr>
+<tr>
+<td><strong>xiaobu-embedding-v2</strong></td>
+<td><strong>512</strong></td>
+<td>中文</td>
+<td>1792 维，中文语义优化，MTEB 中文榜上表现好</td>
+</tr>
+<tr>
+<td><strong>stella-mrl-large-zh-v3.5-1792d</strong></td>
+<td><strong>512</strong></td>
+<td>中文</td>
+<td>1792 维，MRL 训练，能按需截断向量维度</td>
+</tr>
+</tbody></table>
+<p>选型看四件事，按顺序：</p>
+<p><strong>一、先看语言。</strong> 中文为主 → BGE-M3 或中文专用模型；英文为主 → <code>text-embedding-3-large</code> 或 Jina。跨语言长文档 → BGE-M3，它就是为这个场景设计的。</p>
+<p><strong>二、再看长度上限。</strong> 这一条最容易被忽略，但它直接约束 §4 的分块：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">BGE-M3 / Jina / text-embedding-3-large  →  能吃到 8000 token 上下</span><br><span class="line">xiaobu / stella 系列                    →  上限 512 token</span><br></pre></td></tr></table></figure>
+
+<p>512 意味着你的块不能切太大，<strong>否则超出的部分静默丢失</strong>——不报错，只是没进向量，检索永远找不回来。所以「选模型」和「定分块策略」是同一个决定。</p>
+<p><strong>三、再看部署方式。</strong> Jina 的 small 版只有 3300 万参数，适合本地实时推理；<code>text-embedding-3-large</code> 是 API，省事但数据要出网。</p>
+<p><strong>四、最后看要不要混合检索。</strong> 打算向量 + 关键词一起上的话，BGE-M3 一个模型就全给了，不用再单独接一套 BM25。</p>
+<h3 id="这份清单里有两处要修正"><a href="#这份清单里有两处要修正" class="headerlink" title="这份清单里有两处要修正"></a>这份清单里有两处要修正</h3><p><strong>一、<code>Chinese-Alpaca-2</code> 不是嵌入模型。</strong></p>
+<p>它是生成式的中文指令模型（Llama-2 的中文词表扩充 + 增量预训练 + 指令微调那一支），在 RAG 里它站在<strong>生成</strong>那一侧，不是<strong>检索</strong>那一侧。</p>
+<p>把它列进 embedding 候选是分类放错了位置。真要用它，它接的是 §6 的 LLM 那个位置。</p>
+<p><strong>二、<code>M3E-Turbo</code> 这个名字查不到。</strong></p>
+<p>M3E（Moka Massive Mixed Embedding）是一个真实存在的系列——<code>m3e-base</code>（约 1.1 亿参数）和 <code>m3e-large</code>（约 3.4 亿参数），中文效果不错，跟 <code>sentence-transformers</code> 完全兼容，换模型名就能接进 chroma 这类向量库。</p>
+<p>但<strong>没有叫 Turbo 的版本</strong>。用之前建议直接去模型仓库核对一下名字。</p>
+<h3 id="最后一条：换模型必须重建索引"><a href="#最后一条：换模型必须重建索引" class="headerlink" title="最后一条：换模型必须重建索引"></a>最后一条：换模型必须重建索引</h3><p><strong>embedding 模型换了，索引必须全部重建。</strong></p>
+<p>因为不同模型把同一段文本映射到<strong>不同的向量空间</strong>——上一节说的「坐标系」。拿旧索引配新模型，等于拿北京的坐标去查上海的地图，距离全是随机数。</p>
+<p>好消息是它不会静默出错：检索出来的东西会明显不相干，你很快就会发现问题。但它是个<strong>上线前就该排进计划的工程量</strong>，不是出了事才想起来的。</p>
+<h2 id="8-小结"><a href="#8-小结" class="headerlink" title="8. 小结"></a>8. 小结</h2><p><strong>一、提示工程、RAG、微调，按「缺什么」分工。</strong> 没问清楚 → 提示工程；缺乏背景知识 → RAG；能力不足 → 微调。一个够用的判据是：<strong>答案写在某份文档里吗？</strong> 在 → RAG。三者代价差一个数量级，所以按提示工程 → RAG → 微调的顺序往上加，<strong>而且它们是叠加不是三选一。</strong></p>
+<p><strong>二、RAG &#x3D; 检索 + 生成，全程不训练。</strong> LLM 是大脑，RAG 是记着事的记事本。想让模型知道新东西，<strong>往记事本上写一页就行</strong>——这正是它诱人的地方。</p>
+<p><strong>三、三个优势来自同一个机制：生成时手里多了一份带出处的事实。</strong> 时效性、减少幻觉、专业深度，都是这一件事的三个侧面。</p>
+<p><strong>四、Indexing 的两难是分块。</strong> 块小则语义不完整，块大则噪声多，常见折中是按语义边界切、带一点重叠。还要记住一个硬约束：<strong>块不能超过 embedding 模型的输入上限</strong>（不少中文模型只有 512 token），超了会静默丢失。</p>
+<p><strong>五、Retrieval 要两阶段：先召回，再精排。</strong> 向量检索把「语义相似」变成了「距离近」，但它分开编码 query 和 doc，<strong>判断不出细节对不对</strong>。所以粗召回 Top-K 之后，要用 reranker 把 query 和候选拼在一起重新打分，再取 Top-N。<strong>召回要广度，精排要准度。</strong> 放进 Agent 里，检索还可以做成一个工具，让模型自己决定要不要查、查什么。</p>
+<p><strong>六、RAG 本质上是一次 prompt 重构。</strong> 用户问题 + 检索结果 → 拼成新 prompt → 交给 LLM。这一句解释了三件事：<strong>为什么不用训练</strong>（模型没变，输入变了）、<strong>能力边界在哪</strong>（模型读不懂材料，RAG 救不了，那是微调的活）、<strong>主要失败模式在哪</strong>（材料错了，或材料对了但指令没约束住它）。</p>
+<p><strong>七、选 embedding 模型先看语言和长度上限。</strong> 换模型 &#x3D; 换坐标系，<strong>必须重建索引。</strong></p>
+<h2 id="参考"><a href="#参考" class="headerlink" title="参考"></a>参考</h2><ul>
+<li>RAG 原始论文（Lewis et al., 2020）：<a target="_blank" rel="noopener" href="https://arxiv.org/abs/2005.11401">https://arxiv.org/abs/2005.11401</a></li>
+<li>BGE-M3（智源）：<a target="_blank" rel="noopener" href="https://huggingface.co/BAAI/bge-m3">https://huggingface.co/BAAI/bge-m3</a></li>
+<li>M3E 系列：<a target="_blank" rel="noopener" href="https://huggingface.co/moka-ai/m3e-large">https://huggingface.co/moka-ai/m3e-large</a></li>
+<li>OpenAI Embeddings 指南：<a target="_blank" rel="noopener" href="https://platform.openai.com/docs/guides/embeddings">https://platform.openai.com/docs/guides/embeddings</a></li>
+<li>MTEB 检索模型榜单：<a target="_blank" rel="noopener" href="https://huggingface.co/spaces/mteb/leaderboard">https://huggingface.co/spaces/mteb/leaderboard</a></li>
+<li>上一篇：Agent 记忆系统 —— <a href="https://wywzixin.github.io/agent/memory-system/">https://wywzixin.github.io/agent/memory-system/</a></li>
+<li>上下文压缩与 Token 管理 —— <a href="https://wywzixin.github.io/agent/context-compaction/">https://wywzixin.github.io/agent/context-compaction/</a></li>
+<li>Function Calling介绍 —— <a href="https://wywzixin.github.io/agent/function-calling/">https://wywzixin.github.io/agent/function-calling/</a></li>
+<li>MCP 协议与工具接入 —— <a href="https://wywzixin.github.io/agent/mcp-protocol/">https://wywzixin.github.io/agent/mcp-protocol/</a></li>
+<li>ReAct 与 Agent Loop —— <a href="https://wywzixin.github.io/agent/react-agent-loop/">https://wywzixin.github.io/agent/react-agent-loop/</a></li>
+<li>LLM 请求与流式响应 —— <a href="https://wywzixin.github.io/agent/llm-request-streaming/">https://wywzixin.github.io/agent/llm-request-streaming/</a></li>
+</ul>
+</div><div class="article-licensing box"><div class="licensing-title"><p>RAG 检索增强生成</p><p><a href="https://wywzixin.github.io/agent/rag/">https://wywzixin.github.io/agent/rag/</a></p></div><div class="licensing-meta level is-mobile"><div class="level-left"><div class="level-item is-narrow"><div><h6>作者</h6><p>wangyawei</p></div></div><div class="level-item is-narrow"><div><h6>发布于</h6><p>2026-09-15</p></div></div><div class="level-item is-narrow"><div><h6>更新于</h6><p>2026-09-15</p></div></div><div class="level-item is-narrow"><div><h6>许可协议</h6><p><a class="icons" rel="noopener" target="_blank" title="Creative Commons" href="https://creativecommons.org/"><i class="icon fab fa-creative-commons"></i></a><a class="icons" rel="noopener" target="_blank" title="Attribution" href="https://creativecommons.org/licenses/by/4.0/"><i class="icon fab fa-creative-commons-by"></i></a><a class="icons" rel="noopener" target="_blank" title="Noncommercial" href="https://creativecommons.org/licenses/by-nc/4.0/"><i class="icon fab fa-creative-commons-nc"></i></a></p></div></div></div></div></div><div class="article-tags is-size-7 mb-4"><span class="mr-2">#</span><a class="link-muted mr-2" rel="tag" href="/tags/agent/">agent</a><a class="link-muted mr-2" rel="tag" href="/tags/RAG/">RAG</a><a class="link-muted mr-2" rel="tag" href="/tags/%E6%A3%80%E7%B4%A2%E5%A2%9E%E5%BC%BA%E7%94%9F%E6%88%90/">检索增强生成</a><a class="link-muted mr-2" rel="tag" href="/tags/Embedding/">Embedding</a></div><!--!--></article></div><!--!--><nav class="post-navigation mt-4 level is-mobile"><div class="level-start"><a class="article-nav-prev level level-item link-muted" href="/agent/memory-system/"><i class="level-item fas fa-chevron-left"></i><span class="level-item">Agent 记忆系统</span></a></div><div class="level-end"><a class="article-nav-next level level-item link-muted" href="/agent/vector-database/"><span class="level-item">向量数据库：FAISS 与 Pinecone</span><i class="level-item fas fa-chevron-right"></i></a></div></nav><!--!--></div><div class="column column-left is-4-tablet is-4-desktop is-3-widescreen  order-1"><div class="card widget" data-type="profile"><div class="card-content"><nav class="level"><div class="level-item has-text-centered flex-shrink-1"><div><figure class="image is-128x128 mx-auto mb-2"><img class="avatar is-rounded" src="/img/avatar.svg" alt="王亚伟"></figure><p class="title is-size-4 is-block" style="line-height:inherit;">王亚伟</p><p class="is-size-6 is-block">3D · AI</p><p class="is-size-6 is-flex justify-content-center"><i class="fas fa-map-marker-alt mr-1"></i><span>北京</span></p></div></div></nav><nav class="level is-mobile"><div class="level-item has-text-centered is-marginless"><div><p class="heading">文章</p><a href="/archives/"><p class="title">55</p></a></div></div><div class="level-item has-text-centered is-marginless"><div><p class="heading">分类</p><a href="/categories/"><p class="title">9</p></a></div></div><div class="level-item has-text-centered is-marginless"><div><p class="heading">标签</p><a href="/tags/"><p class="title">64</p></a></div></div></nav><div class="level"><a class="level-item button is-primary is-rounded" href="https://github.com/wywzixin" target="_blank" rel="me noopener">关注我</a></div><div class="level is-mobile is-multiline"><a class="level-item button is-transparent is-marginless" target="_blank" rel="me noopener" title="Github" href="https://github.com/wywzixin"><i class="fab fa-github"></i></a><a class="level-item button is-transparent is-marginless" target="_blank" rel="me noopener" title="Facebook" href="https://facebook.com"><i class="fab fa-facebook"></i></a><a class="level-item button is-transparent is-marginless" target="_blank" rel="me noopener" title="Twitter" href="https://twitter.com"><i class="fab fa-twitter"></i></a><a class="level-item button is-transparent is-marginless" target="_blank" rel="me noopener" title="Dribbble" href="https://dribbble.com"><i class="fab fa-dribbble"></i></a><a class="level-item button is-transparent is-marginless" target="_blank" rel="me noopener" title="RSS" href="/"><i class="fas fa-rss"></i></a></div></div></div><!--!--><div class="card widget" data-type="categories"><div class="card-content"><div class="menu"><h3 class="menu-label">分类</h3><ul class="menu-list"><li><a class="level is-mobile" href="/categories/cesium/"><span class="level-start"><span class="level-item">cesium</span></span><span class="level-end"><span class="level-item tag">24</span></span></a></li><li><a class="level is-mobile" href="/categories/threejs/"><span class="level-start"><span class="level-item">threejs</span></span><span class="level-end"><span class="level-item tag">6</span></span></a></li><li><a class="level is-mobile" href="/categories/%E5%8C%97%E6%96%97%E7%BD%91%E6%A0%BC%E6%80%A7%E8%83%BD%E4%BC%98%E5%8C%96/"><span class="level-start"><span class="level-item">北斗网格性能优化</span></span><span class="level-end"><span class="level-item tag">7</span></span></a></li><li><a class="level is-mobile" href="/categories/%E5%9B%BE%E5%BD%A2%E5%AD%A6/"><span class="level-start"><span class="level-item">图形学</span></span><span class="level-end"><span class="level-item tag">1</span></span></a></li><li><a class="level is-mobile" href="/categories/vue/"><span class="level-start"><span class="level-item">vue</span></span><span class="level-end"><span class="level-item tag">2</span></span></a></li><li><a class="level is-mobile" href="/categories/agent/"><span class="level-start"><span class="level-item">agent</span></span><span class="level-end"><span class="level-item tag">8</span></span></a></li><li><a class="level is-mobile" href="/categories/claude-code/"><span class="level-start"><span class="level-item">claude code</span></span><span class="level-end"><span class="level-item tag">2</span></span></a></li><li><a class="level is-mobile" href="/categories/python/"><span class="level-start"><span class="level-item">python</span></span><span class="level-end"><span class="level-item tag">3</span></span></a></li><li><a class="level is-mobile" href="/categories/%E5%A4%A7%E6%A8%A1%E5%9E%8B/"><span class="level-start"><span class="level-item">大模型</span></span><span class="level-end"><span class="level-item tag">2</span></span></a></li></ul></div></div></div><div class="card widget" data-type="tags"><div class="card-content"><div class="menu"><h3 class="menu-label">标签</h3><div class="field is-grouped is-grouped-multiline"><div class="control"><a class="tags has-addons" href="/tags/Agent-Loop/"><span class="tag">Agent Loop</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/Cesium/"><span class="tag">Cesium</span><span class="tag">7</span></a></div><div class="control"><a class="tags has-addons" href="/tags/DrawCommand/"><span class="tag">DrawCommand</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/ENU/"><span class="tag">ENU</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/Embedding/"><span class="tag">Embedding</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/FAISS/"><span class="tag">FAISS</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/Function-Calling/"><span class="tag">Function Calling</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/GPT-3/"><span class="tag">GPT-3</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/GPU-Instancing/"><span class="tag">GPU Instancing</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/L6/"><span class="tag">L6</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/L7/"><span class="tag">L7</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/LLM/"><span class="tag">LLM</span><span class="tag">2</span></a></div><div class="control"><a class="tags has-addons" href="/tags/LOD/"><span class="tag">LOD</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/LRU/"><span class="tag">LRU</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/LangChain/"><span class="tag">LangChain</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/MCP/"><span class="tag">MCP</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/PBR/"><span class="tag">PBR</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/Pinecone/"><span class="tag">Pinecone</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/RAG/"><span class="tag">RAG</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/RTE/"><span class="tag">RTE</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/ReAct/"><span class="tag">ReAct</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/SSE/"><span class="tag">SSE</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/Shader/"><span class="tag">Shader</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/Token/"><span class="tag">Token</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/Transferable/"><span class="tag">Transferable</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/Transformer/"><span class="tag">Transformer</span><span class="tag">2</span></a></div><div class="control"><a class="tags has-addons" href="/tags/Web-Worker/"><span class="tag">Web Worker</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/WebGL/"><span class="tag">WebGL</span><span class="tag">2</span></a></div><div class="control"><a class="tags has-addons" href="/tags/agent/"><span class="tag">agent</span><span class="tag">8</span></a></div><div class="control"><a class="tags has-addons" href="/tags/asyncio/"><span class="tag">asyncio</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/cesium/"><span class="tag">cesium</span><span class="tag">24</span></a></div><div class="control"><a class="tags has-addons" href="/tags/claude-code/"><span class="tag">claude code</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/markstream/"><span class="tag">markstream</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/prompt-cache/"><span class="tag">prompt cache</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/python/"><span class="tag">python</span><span class="tag">3</span></a></div><div class="control"><a class="tags has-addons" href="/tags/threejs/"><span class="tag">threejs</span><span class="tag">6</span></a></div><div class="control"><a class="tags has-addons" href="/tags/vue/"><span class="tag">vue</span><span class="tag">2</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E4%B8%8A%E4%B8%8B%E6%96%87%E5%8E%8B%E7%BC%A9/"><span class="tag">上下文压缩</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E4%B8%8A%E4%B8%8B%E6%96%87%E5%B7%A5%E7%A8%8B/"><span class="tag">上下文工程</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E5%86%85%E5%AD%98%E7%AE%A1%E7%90%86/"><span class="tag">内存管理</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E5%8C%97%E6%96%97%E7%BD%91%E6%A0%BC/"><span class="tag">北斗网格</span><span class="tag">7</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E5%8F%82%E6%95%B0%E9%87%8F/"><span class="tag">参数量</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E5%90%8E%E5%A4%84%E7%90%86/"><span class="tag">后处理</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E5%90%91%E9%87%8F%E6%95%B0%E6%8D%AE%E5%BA%93/"><span class="tag">向量数据库</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E5%93%8D%E5%BA%94%E5%BC%8F%E5%8E%9F%E7%90%86/"><span class="tag">响应式原理</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E5%9B%BE%E5%BD%A2%E5%AD%A6/"><span class="tag">图形学</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E5%A4%9A%E5%A4%B4%E6%B3%A8%E6%84%8F%E5%8A%9B/"><span class="tag">多头注意力</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E5%A4%A7%E6%A8%A1%E5%9E%8B/"><span class="tag">大模型</span><span class="tag">2</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E5%B7%A5%E5%85%B7%E8%B0%83%E7%94%A8/"><span class="tag">工具调用</span><span class="tag">2</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E5%B9%B6%E5%8F%91/"><span class="tag">并发</span><span class="tag">2</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E6%9D%90%E8%B4%A8/"><span class="tag">材质</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E6%9E%B6%E6%9E%84%E8%AE%BE%E8%AE%A1/"><span class="tag">架构设计</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E6%A3%80%E7%B4%A2%E5%A2%9E%E5%BC%BA%E7%94%9F%E6%88%90/"><span class="tag">检索增强生成</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E6%B3%A8%E6%84%8F%E5%8A%9B%E6%9C%BA%E5%88%B6/"><span class="tag">注意力机制</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E6%B5%81%E5%BC%8F%E5%93%8D%E5%BA%94/"><span class="tag">流式响应</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E6%B5%81%E5%BC%8F%E6%B8%B2%E6%9F%93/"><span class="tag">流式渲染</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E7%A9%BA%E9%97%B4%E5%88%86%E5%9D%97/"><span class="tag">空间分块</span><span class="tag">2</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E7%BA%BF%E7%A8%8B%E6%B1%A0/"><span class="tag">线程池</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E7%BC%93%E5%AD%98/"><span class="tag">缓存</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E8%A7%86%E9%94%A5%E5%89%94%E9%99%A4/"><span class="tag">视锥剔除</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E8%AE%B0%E5%BF%86%E7%B3%BB%E7%BB%9F/"><span class="tag">记忆系统</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E8%BD%AE%E5%BB%93%E7%BA%BF/"><span class="tag">轮廓线</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E9%AB%98%E5%BA%A6%E5%88%87%E7%89%87/"><span class="tag">高度切片</span><span class="tag">1</span></a></div></div></div></div></div><div class="card widget" data-type="subscribe-email"><div class="card-content"><div class="menu"><h3 class="menu-label">订阅更新</h3><form action="https://feedburner.google.com/fb/a/mailverify" method="post" target="popupwindow" onsubmit="window.open(&#039;https://feedburner.google.com/fb/a/mailverify?uri=&#039;,&#039;popupwindow&#039;,&#039;scrollbars=yes,width=550,height=520&#039;);return true"><input type="hidden" value="" name="uri"><input type="hidden" name="loc" value="en_US"><div class="field has-addons"><div class="control has-icons-left is-expanded"><input class="input" name="email" type="email" placeholder="Email"><span class="icon is-small is-left"><i class="fas fa-envelope"></i></span></div><div class="control"><input class="button" type="submit" value="订阅"></div></div></form></div></div></div><div class="column-right-shadow is-hidden-widescreen"></div></div><div class="column column-right is-4-tablet is-4-desktop is-3-widescreen is-hidden-touch is-hidden-desktop-only order-3"><div class="card widget" data-type="recent-posts"><div class="card-content"><h3 class="menu-label">最新文章</h3><article class="media"><div class="media-content"><p class="date"><time dateTime="2026-09-15T00:00:00.000Z">2026-09-15</time></p><p class="title"><a href="/agent/llm-request-streaming/">LLM 请求与流式响应</a></p><p class="categories"><a href="/categories/agent/">agent</a></p></div></article><article class="media"><div class="media-content"><p class="date"><time dateTime="2026-09-14T23:00:00.000Z">2026-09-15</time></p><p class="title"><a href="/agent/react-agent-loop/">ReAct 与 Agent Loop</a></p><p class="categories"><a href="/categories/agent/">agent</a></p></div></article><article class="media"><div class="media-content"><p class="date"><time dateTime="2026-09-14T22:00:00.000Z">2026-09-15</time></p><p class="title"><a href="/agent/mcp-protocol/">MCP 协议与工具接入</a></p><p class="categories"><a href="/categories/agent/">agent</a></p></div></article><article class="media"><div class="media-content"><p class="date"><time dateTime="2026-09-14T21:00:00.000Z">2026-09-15</time></p><p class="title"><a href="/agent/function-calling/">Function Calling介绍</a></p><p class="categories"><a href="/categories/agent/">agent</a></p></div></article><article class="media"><div class="media-content"><p class="date"><time dateTime="2026-09-14T20:00:00.000Z">2026-09-15</time></p><p class="title"><a href="/agent/context-compaction/">上下文压缩与 Token 管理</a></p><p class="categories"><a href="/categories/agent/">agent</a></p></div></article></div></div><div class="card widget" data-type="archives"><div class="card-content"><div class="menu"><h3 class="menu-label">归档</h3><ul class="menu-list"><li><a class="level is-mobile" href="/archives/2026/09/"><span class="level-start"><span class="level-item">九月 2026</span></span><span class="level-end"><span class="level-item tag">25</span></span></a></li><li><a class="level is-mobile" href="/archives/2026/03/"><span class="level-start"><span class="level-item">三月 2026</span></span><span class="level-end"><span class="level-item tag">4</span></span></a></li><li><a class="level is-mobile" href="/archives/2025/03/"><span class="level-start"><span class="level-item">三月 2025</span></span><span class="level-end"><span class="level-item tag">25</span></span></a></li><li><a class="level is-mobile" href="/archives/2025/01/"><span class="level-start"><span class="level-item">一月 2025</span></span><span class="level-end"><span class="level-item tag">1</span></span></a></li></ul></div></div></div></div></div></div></section><footer class="footer"><div class="container"><div class="level"><div class="level-start"><a class="footer-logo is-block mb-2" href="/"><img src="/img/logo.svg" alt="Hexo" height="28"></a><p class="is-size-7"><span>&copy; 2026 wangyawei</span>  Powered by <a href="https://hexo.io/" target="_blank" rel="noopener">Hexo</a> &amp; <a href="https://github.com/ppoffice/hexo-theme-icarus" target="_blank" rel="noopener">Icarus</a></p><p class="is-size-7">© 2019</p></div><div class="level-end"><div class="field has-addons"><p class="control"><a class="button is-transparent is-large" target="_blank" rel="noopener" title="Creative Commons" href="https://creativecommons.org/"><i class="fab fa-creative-commons"></i></a></p><p class="control"><a class="button is-transparent is-large" target="_blank" rel="noopener" title="Attribution 4.0 International" href="https://creativecommons.org/licenses/by/4.0/"><i class="fab fa-creative-commons-by"></i></a></p><p class="control"><a class="button is-transparent is-large" target="_blank" rel="noopener" title="Download on GitHub" href="https://github.com/ppoffice/hexo-theme-icarus"><i class="fab fa-github"></i></a></p></div></div></div></div></footer><script src="https://cdn.jsdelivr.net/npm/jquery@3.3.1/dist/jquery.min.js"></script><script src="https://cdn.jsdelivr.net/npm/moment@2.22.2/min/moment-with-locales.min.js"></script><script src="https://cdn.jsdelivr.net/npm/clipboard@2.0.4/dist/clipboard.min.js" defer></script><script>moment.locale("zh-cn");</script><script>var IcarusThemeSettings = {
+            article: {
+                highlight: {
+                    clipboard: true,
+                    fold: 'unfolded'
+                }
+            }
+        };</script><script data-pjax src="/js/column.js"></script><a id="back-to-top" title="回到顶端" href="javascript:;"><i class="fas fa-chevron-up"></i></a><script data-pjax src="/js/back_to_top.js" defer></script><!--!--><!--!--><!--!--><script src="https://cdn.jsdelivr.net/npm/cookieconsent@3.1.1/build/cookieconsent.min.js" defer></script><script>window.addEventListener("load", () => {
+      window.cookieconsent.initialise({
+        type: "info",
+        theme: "edgeless",
+        static: false,
+        position: "bottom-left",
+        content: {
+          message: "此网站使用Cookie来改善您的体验。",
+          dismiss: "知道了！",
+          allow: "允许使用Cookie",
+          deny: "拒绝",
+          link: "了解更多",
+          policy: "Cookie政策",
+          href: "https://www.cookiesandyou.com/",
+        },
+        palette: {
+          popup: {
+            background: "#edeff5",
+            text: "#838391"
+          },
+          button: {
+            background: "#4b81e8"
+          },
+        },
+      });
+    });</script><script src="https://cdn.jsdelivr.net/npm/lightgallery@1.10.0/dist/js/lightgallery.min.js" defer></script><script src="https://cdn.jsdelivr.net/npm/justifiedGallery@3.8.1/dist/js/jquery.justifiedGallery.min.js" defer></script><script>window.addEventListener("load", () => {
+            if (typeof $.fn.lightGallery === 'function') {
+                $('.article').lightGallery({ selector: '.gallery-item' });
+            }
+            if (typeof $.fn.justifiedGallery === 'function') {
+                if ($('.justified-gallery > p > .gallery-item').length) {
+                    $('.justified-gallery > p > .gallery-item').unwrap();
+                }
+                $('.justified-gallery').justifiedGallery();
+            }
+        });</script><!--!--><!--!--><script src="https://cdn.jsdelivr.net/npm/pjax@0.2.8/pjax.min.js"></script><script src="/js/pjax.js"></script><!--!--><!--!--><!--!--><script data-pjax src="/js/main.js" defer></script><div class="searchbox"><div class="searchbox-container"><div class="searchbox-header"><div class="searchbox-input-container"><input class="searchbox-input" type="text" placeholder="想要查找什么..."></div><a class="searchbox-close" href="javascript:;">×</a></div><div class="searchbox-body"></div></div></div><script data-pjax src="/js/insight.js" defer></script><script data-pjax>document.addEventListener('DOMContentLoaded', function () {
+            loadInsight({"contentUrl":"/content.json"}, {"hint":"想要查找什么...","untitled":"(无标题)","posts":"文章","pages":"页面","categories":"分类","tags":"标签"});
+        });</script></body></html>

@@ -1,0 +1,337 @@
+<!doctype html>
+<html lang="zh"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1"><meta><meta name="referrer" content="no-referrer"><title>ReAct 与 Agent Loop - Hexo</title><link rel="manifest" href="/manifest.json"><meta name="application-name" content="Hexo"><meta name="msapplication-TileImage" content="/img/favicon.svg"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="Hexo"><meta name="apple-mobile-web-app-status-bar-style" content="default"><meta name="description" content="ReAct 是 Reason + Act 的缩写：让模型先想一步、再做一步、看看结果接着想，把推理和行动交替起来。这篇讲这个交替怎么从当年的提示词约定变成 API 的一等公民，落地成的那个 Agent Loop 里最容易写错的四件事（出口条件、轮数上限、工具失败、并行工具），上下文为什么是平方级增长，以及 AgentEvent 为什么要在模型事件之上再抽一层。"><meta property="og:type" content="blog"><meta property="og:title" content="ReAct 与 Agent Loop"><meta property="og:url" content="https://wywzixin.github.io/agent/react-agent-loop/"><meta property="og:site_name" content="Hexo"><meta property="og:description" content="ReAct 是 Reason + Act 的缩写：让模型先想一步、再做一步、看看结果接着想，把推理和行动交替起来。这篇讲这个交替怎么从当年的提示词约定变成 API 的一等公民，落地成的那个 Agent Loop 里最容易写错的四件事（出口条件、轮数上限、工具失败、并行工具），上下文为什么是平方级增长，以及 AgentEvent 为什么要在模型事件之上再抽一层。"><meta property="og:locale" content="zh_CN"><meta property="og:image" content="https://cdn.nlark.com/yuque/0/2026/png/276041/1784169423770-02de843f-917a-47a2-b879-5c4df0387dd5.png"><meta property="og:image" content="https://cdn.nlark.com/yuque/0/2026/png/276041/1784169524458-bd486ac9-53af-43c6-a4b8-eec2ce7eed4e.png"><meta property="og:image" content="https://cdn.nlark.com/yuque/0/2026/png/276041/1784169542317-b9327435-6c1f-4f1b-b70a-b7925aa1a336.png"><meta property="og:image" content="https://cdn.nlark.com/yuque/0/2026/png/276041/1784169557521-14fecb46-7b5c-4022-8dad-558507d46219.png"><meta property="og:image" content="https://cdn.nlark.com/yuque/0/2026/png/276041/1784169641277-7538668d-de92-4de6-a917-d44de75fc414.png"><meta property="og:image" content="https://cdn.nlark.com/yuque/0/2026/png/276041/1784169683487-90e9b032-287e-41fe-9a33-f993f45a0708.png"><meta property="og:image" content="https://cdn.nlark.com/yuque/0/2026/png/276041/1784169717713-7d1c862c-ab0c-4439-8fa2-f72c1123a1e0.png"><meta property="og:image" content="https://cdn.nlark.com/yuque/0/2026/png/276041/1784169757224-b97d95e1-048c-4be8-9e08-0d46c1b537ff.png"><meta property="og:image" content="https://cdn.nlark.com/yuque/0/2026/png/276041/1784169857472-5d9b463c-2f6b-4bb3-8b1d-398e6f2f1d52.png"><meta property="og:image" content="https://cdn.nlark.com/yuque/0/2026/png/276041/1784169871910-73c933af-d525-4853-83c2-e2f5875acd89.png"><meta property="og:image" content="https://cdn.nlark.com/yuque/0/2026/png/276041/1784169956899-d33b7616-4422-4d27-8250-14a0ba1fb7f8.png"><meta property="og:image" content="https://cdn.nlark.com/yuque/0/2026/png/276041/1784170028313-a3bb6753-6596-4577-b9fb-1457ae81bc96.png"><meta property="article:published_time" content="2026-09-14T23:00:00.000Z"><meta property="article:modified_time" content="2026-09-14T17:19:06.149Z"><meta property="article:author" content="wangyawei"><meta property="article:tag" content="agent"><meta property="article:tag" content="ReAct"><meta property="article:tag" content="Agent Loop"><meta property="twitter:card" content="summary"><meta property="twitter:image:src" content="https://cdn.nlark.com/yuque/0/2026/png/276041/1784169423770-02de843f-917a-47a2-b879-5c4df0387dd5.png"><script type="application/ld+json">{"@context":"https://schema.org","@type":"BlogPosting","mainEntityOfPage":{"@type":"WebPage","@id":"https://wywzixin.github.io/agent/react-agent-loop/"},"headline":"ReAct 与 Agent Loop","image":["https://cdn.nlark.com/yuque/0/2026/png/276041/1784169423770-02de843f-917a-47a2-b879-5c4df0387dd5.png","https://cdn.nlark.com/yuque/0/2026/png/276041/1784169524458-bd486ac9-53af-43c6-a4b8-eec2ce7eed4e.png","https://cdn.nlark.com/yuque/0/2026/png/276041/1784169542317-b9327435-6c1f-4f1b-b70a-b7925aa1a336.png","https://cdn.nlark.com/yuque/0/2026/png/276041/1784169557521-14fecb46-7b5c-4022-8dad-558507d46219.png","https://cdn.nlark.com/yuque/0/2026/png/276041/1784169641277-7538668d-de92-4de6-a917-d44de75fc414.png","https://cdn.nlark.com/yuque/0/2026/png/276041/1784169683487-90e9b032-287e-41fe-9a33-f993f45a0708.png","https://cdn.nlark.com/yuque/0/2026/png/276041/1784169717713-7d1c862c-ab0c-4439-8fa2-f72c1123a1e0.png","https://cdn.nlark.com/yuque/0/2026/png/276041/1784169757224-b97d95e1-048c-4be8-9e08-0d46c1b537ff.png","https://cdn.nlark.com/yuque/0/2026/png/276041/1784169857472-5d9b463c-2f6b-4bb3-8b1d-398e6f2f1d52.png","https://cdn.nlark.com/yuque/0/2026/png/276041/1784169871910-73c933af-d525-4853-83c2-e2f5875acd89.png","https://cdn.nlark.com/yuque/0/2026/png/276041/1784169956899-d33b7616-4422-4d27-8250-14a0ba1fb7f8.png","https://cdn.nlark.com/yuque/0/2026/png/276041/1784170028313-a3bb6753-6596-4577-b9fb-1457ae81bc96.png"],"datePublished":"2026-09-14T23:00:00.000Z","dateModified":"2026-09-14T17:19:06.149Z","author":{"@type":"Person","name":"wangyawei"},"publisher":{"@type":"Organization","name":"Hexo","logo":{"@type":"ImageObject","url":"https://wywzixin.github.io/img/logo.svg"}},"description":"ReAct 是 Reason + Act 的缩写：让模型先想一步、再做一步、看看结果接着想，把推理和行动交替起来。这篇讲这个交替怎么从当年的提示词约定变成 API 的一等公民，落地成的那个 Agent Loop 里最容易写错的四件事（出口条件、轮数上限、工具失败、并行工具），上下文为什么是平方级增长，以及 AgentEvent 为什么要在模型事件之上再抽一层。"}</script><link rel="canonical" href="https://wywzixin.github.io/agent/react-agent-loop/"><link rel="icon" href="/img/favicon.svg"><style>html,body{background:#f7f7f7}</style><link rel="stylesheet" href="https://use.fontawesome.com/releases/v6.0.0/css/all.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js@11.7.0/styles/atom-one-dark.css"><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Ubuntu:wght@400;600&amp;family=Source+Code+Pro"><link rel="stylesheet" href="/css/default.css"><!--!--><!--!--><!--!--><!--!--><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/cookieconsent@3.1.1/build/cookieconsent.min.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/lightgallery@1.10.0/dist/css/lightgallery.min.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/justifiedGallery@3.8.1/dist/css/justifiedGallery.min.css"><!--!--><!--!--><!--!--><style>.pace{-webkit-pointer-events:none;pointer-events:none;-webkit-user-select:none;-moz-user-select:none;user-select:none}.pace-inactive{display:none}.pace .pace-progress{background:#3273dc;position:fixed;z-index:2000;top:0;right:100%;width:100%;height:2px}</style><script src="https://cdn.jsdelivr.net/npm/pace-js@1.2.4/pace.min.js"></script><!--!--><!--!--><!-- hexo injector head_end start --><script>
+  (function () {
+      function switchTab() {
+          if (!location.hash) {
+            return;
+          }
+
+          const id = '#' + CSS.escape(location.hash.substring(1));
+          const $tabMenu = document.querySelector(`.tabs a[href="${id}"]`);
+          if (!$tabMenu) {
+            return;
+          }
+
+          const $tabMenuContainer = $tabMenu.parentElement.parentElement;
+          Array.from($tabMenuContainer.children).forEach($menu => $menu.classList.remove('is-active'));
+          Array.from($tabMenuContainer.querySelectorAll('a'))
+              .map($menu => document.getElementById($menu.getAttribute("href").substring(1)))
+              .forEach($content => $content.classList.add('is-hidden'));
+
+          if ($tabMenu) {
+              $tabMenu.parentElement.classList.add('is-active');
+          }
+          const $activeTab = document.querySelector(id);
+          if ($activeTab) {
+              $activeTab.classList.remove('is-hidden');
+          }
+      }
+      switchTab();
+      window.addEventListener('hashchange', switchTab, false);
+  })();
+  </script><!-- hexo injector head_end end --><meta name="generator" content="Hexo 7.3.0"></head><body class="is-3-column"><nav class="navbar navbar-main"><div class="container navbar-container"><div class="navbar-brand justify-content-center"><a class="navbar-item navbar-logo" href="/"><img src="/img/logo.svg" alt="Hexo" height="28"></a></div><div class="navbar-menu"><div class="navbar-start"><a class="navbar-item" href="/">首页</a><a class="navbar-item" href="/archives">归档</a><a class="navbar-item" href="/categories">分类</a><a class="navbar-item" href="/tags">标签</a><a class="navbar-item" href="/about">关于</a></div><div class="navbar-end"><a class="navbar-item" target="_blank" rel="noopener" title="Download on GitHub" href="https://github.com/ppoffice/hexo-theme-icarus"><i class="fab fa-github"></i></a><a class="navbar-item search" title="搜索" href="javascript:;"><i class="fas fa-search"></i></a></div></div></div></nav><section class="section"><div class="container"><div class="columns"><div class="column order-2 column-main is-8-tablet is-8-desktop is-6-widescreen"><div class="card"><article class="card-content article" role="article"><div class="article-meta is-size-7 is-uppercase level is-mobile"><div class="level-left"><span class="level-item"><time dateTime="2026-09-14T23:00:00.000Z" title="2026/9/15 07:00:00">2026-09-15</time>发表</span><span class="level-item"><time dateTime="2026-09-14T17:19:06.149Z" title="2026/9/15 01:19:06">2026-09-15</time>更新</span><span class="level-item"><a class="link-muted" href="/categories/agent/">agent</a></span><span class="level-item">29 分钟读完 (大约4302个字)</span></div></div><h1 class="title is-3 is-size-4-mobile">ReAct 与 Agent Loop</h1><div class="content"><p>ReAct 是 <strong>Reason + Act</strong> 的缩写：让模型<strong>先想一步、再做一步、看看结果接着想</strong>——把推理和行动交替起来，而不是一口气把答案编完。</p>
+<p>落地到代码，这个交替就是一个 <code>while</code> 循环：模型自己决定调几次工具、每次调哪个、什么时候停。这个循环通常叫 <strong>Agent Loop</strong>。</p>
+<p><img src="https://cdn.nlark.com/yuque/0/2026/png/276041/1784169423770-02de843f-917a-47a2-b879-5c4df0387dd5.png"></p>
+<span id="more"></span>
+
+<h2 id="1-ReAct：先想，再做，看了结果再想"><a href="#1-ReAct：先想，再做，看了结果再想" class="headerlink" title="1. ReAct：先想，再做，看了结果再想"></a>1. ReAct：先想，再做，看了结果再想</h2><p>这个套路不是凭空来的。2022 年 10 月，Princeton 和 Google 的几位作者发了篇论文，把它命名为 <strong>ReAct</strong>。当时的背景是：<strong>推理和行动被当成两个独立的问题在研究。</strong></p>
+<ul>
+<li>一边是 <strong>chain-of-thought</strong>：让模型把推理过程写出来，效果确实好，但它<strong>只能靠脑子里的知识</strong>——知识过时了、记错了，推理再顺也是错的，而且错误会一路传播下去</li>
+<li>另一边是 <strong>action plan generation</strong>：让模型输出动作、去调外部工具。但它<strong>不”想”</strong>——拿到什么结果就用什么结果，不会根据结果调整策略</li>
+</ul>
+<p>ReAct 把两件事<strong>交替</strong>起来：模型先写一段 <strong>Thought</strong>（自由文本的推理），再输出一个 <strong>Action</strong>（真正去调工具），环境返回 <strong>Observation</strong>（执行结果），然后进入下一轮 Thought。</p>
+<p>论文里有两句话把这个分工说得很准：</p>
+<ul>
+<li><strong>Thought 不改变环境。</strong> 它的作用是”归纳、追踪、更新计划，以及处理异常”</li>
+<li><strong>Action 才改变环境。</strong> 它是模型和外部世界之间唯一的接口</li>
+</ul>
+<p>效果（PaLM-540B，few-shot）：</p>
+<table>
+<thead>
+<tr>
+<th>任务</th>
+<th>ReAct</th>
+<th>对照</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>HotpotQA（多跳问答）</td>
+<td>EM 27.4</td>
+<td>纯 Action 25.7；CoT 29.4（但 CoT 是<strong>编</strong>的）</td>
+</tr>
+<tr>
+<td>FEVER（事实核查）</td>
+<td>Acc 60.9</td>
+<td>纯 Action 58.9，<strong>高于 CoT 的 56.3</strong></td>
+</tr>
+<tr>
+<td>ALFWorld（文字游戏）</td>
+<td>成功率 71%</td>
+<td>比模仿学习 &#x2F; 强化学习<strong>高 34 个百分点</strong>，后者训练用了 10³～10⁵ 条数据</td>
+</tr>
+<tr>
+<td>WebShop（网页购物）</td>
+<td>—</td>
+<td>比模仿学习 &#x2F; 强化学习<strong>高 10 个百分点</strong></td>
+</tr>
+</tbody></table>
+<p>ALFWorld 那行最值得看：<strong>ReAct 只用了一两个示例（写进 prompt 里），就打赢了用几万条数据训练出来的方法。</strong></p>
+<p>HotpotQA 那行则要连着看：CoT 的分数更高，但它<strong>没有外部依据</strong>——答对了可能是因为记住了，答错了你也看不出来。ReAct 分数低一点，但每一句都能追溯到一次搜索。论文的结论是两者结合最好（ReAct 检索完再让 CoT 总结，EM 35.1），<strong>内部知识和外部信息各管一段</strong>。</p>
+<p><img src="https://cdn.nlark.com/yuque/0/2026/png/276041/1784169524458-bd486ac9-53af-43c6-a4b8-eec2ce7eed4e.png"></p>
+<p><img src="https://cdn.nlark.com/yuque/0/2026/png/276041/1784169542317-b9327435-6c1f-4f1b-b70a-b7925aa1a336.png"></p>
+<p><img src="https://cdn.nlark.com/yuque/0/2026/png/276041/1784169557521-14fecb46-7b5c-4022-8dad-558507d46219.png"></p>
+<h2 id="2-从提示词约定到-API-的一等公民"><a href="#2-从提示词约定到-API-的一等公民" class="headerlink" title="2. 从提示词约定到 API 的一等公民"></a>2. 从提示词约定到 API 的一等公民</h2><p>ReAct 当年是<strong>纯提示词</strong>的：给了几个示例，模型照着格式往下写。harness 那一边干的事，说白了就是一个<strong>文本解析器</strong>——从模型输出里把 <code>Action:</code> 那一行抠出来，解析出工具名和参数，执行，再把结果拼成 <code>Observation:</code> 塞回上下文。</p>
+<p>所以那时候最脆的地方就在解析：模型多写一个空格、换个措辞、把参数写成中文引号，整套就崩了。</p>
+<p><strong><code>tool_use</code> 把这件事变成了 API 的一等公民。</strong> 同一个三件套，现在有了结构化字段：</p>
+<table>
+<thead>
+<tr>
+<th>ReAct（2022，文本约定）</th>
+<th>Claude Messages API（现在）</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>Thought: ...</code></td>
+<td><code>thinking</code> 块（开了 extended thinking 才有）</td>
+</tr>
+<tr>
+<td><code>Action: search[Apple]</code></td>
+<td><code>tool_use</code> 块（<code>name</code> + <code>input</code>）</td>
+</tr>
+<tr>
+<td><code>Observation: ...</code></td>
+<td><code>tool_result</code> 块（<code>content</code>）</td>
+</tr>
+</tbody></table>
+<p>最大的变化是<strong>解析这一步消失了</strong>：<code>input</code> 直接就是解析好的对象（Anthropic、Gemini），或者一个规规矩矩的 JSON 字符串（OpenAI，自己 <code>json.loads</code> 一下）。</p>
+<p>但有一个东西<strong>退回去了</strong>：可解释性。ReAct 论文专门强调 Thought 的好处之一是”人能看懂模型为什么这么做”。而现在 <code>thinking</code> 块能不能看到，取决于 <code>display</code> 参数——<strong>Claude 5 上它默认是 <code>omitted</code></strong>，你拿到的只有签名，没有内容（<a href="/agent/llm-request-streaming/">上一篇</a> §4）。想看见得显式写 <code>&quot;display&quot;: &quot;summarized&quot;</code>。</p>
+<h2 id="3-Agent-Loop-的核心：一个-while-循环"><a href="#3-Agent-Loop-的核心：一个-while-循环" class="headerlink" title="3. Agent Loop 的核心：一个 while 循环"></a>3. Agent Loop 的核心：一个 while 循环</h2><p>伪代码长这样：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><span class="line">function agentLoop(userMessage):</span><br><span class="line">    messages = [...历史消息, userMessage]</span><br><span class="line">    while true:</span><br><span class="line">        response = callLLM(systemPrompt, messages, tools)</span><br><span class="line">        if response 没有 tool_use:</span><br><span class="line">            return response</span><br><span class="line">        messages.append(&#123;role: &quot;assistant&quot;, content: response.content&#125;)</span><br><span class="line">        results = []</span><br><span class="line">        for each toolUse in response.toolUses:</span><br><span class="line">            result = executeTool(toolUse.name, toolUse.input)</span><br><span class="line">            results.append(tool_result(toolUse.id, result))</span><br><span class="line">        messages.append(&#123;role: &quot;user&quot;, content: results&#125;)</span><br></pre></td></tr></table></figure>
+
+<p>拆开看只有三件事：</p>
+<ol>
+<li><strong>调模型</strong></li>
+<li><strong>没要工具就返回</strong> —— 这是唯一的出口</li>
+<li><strong>要了工具就执行，把结果塞回 <code>messages</code>，回到第 1 步</strong></li>
+</ol>
+<p>写成真的代码：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">async</span> <span class="keyword">def</span> <span class="title function_">agent_loop</span>(<span class="params">client, system, messages, tools, max_turns=<span class="number">20</span></span>):</span><br><span class="line">    <span class="keyword">for</span> _ <span class="keyword">in</span> <span class="built_in">range</span>(max_turns):                       <span class="comment"># 不是 while true</span></span><br><span class="line">        response = <span class="keyword">await</span> client.create(</span><br><span class="line">            system=system, messages=messages, tools=tools</span><br><span class="line">        )</span><br><span class="line"></span><br><span class="line">        tool_uses = [b <span class="keyword">for</span> b <span class="keyword">in</span> response.content <span class="keyword">if</span> b.<span class="built_in">type</span> == <span class="string">&quot;tool_use&quot;</span>]</span><br><span class="line">        <span class="keyword">if</span> <span class="keyword">not</span> tool_uses:                            <span class="comment"># 唯一的出口</span></span><br><span class="line">            <span class="keyword">return</span> response</span><br><span class="line"></span><br><span class="line">        <span class="comment"># 模型这一轮说的话原样存进历史（thinking 块和签名也在里面）</span></span><br><span class="line">        messages.append(&#123;<span class="string">&quot;role&quot;</span>: <span class="string">&quot;assistant&quot;</span>, <span class="string">&quot;content&quot;</span>: response.content&#125;)</span><br><span class="line"></span><br><span class="line">        results = []</span><br><span class="line">        <span class="keyword">for</span> tool_use <span class="keyword">in</span> tool_uses:</span><br><span class="line">            <span class="keyword">try</span>:</span><br><span class="line">                output = <span class="keyword">await</span> execute_tool(tool_use.name, tool_use.<span class="built_in">input</span>)</span><br><span class="line">                results.append(tool_result(tool_use.<span class="built_in">id</span>, output))</span><br><span class="line">            <span class="keyword">except</span> Exception <span class="keyword">as</span> e:</span><br><span class="line">                <span class="comment"># 工具失败不往外抛，包成 is_error 的结果回传</span></span><br><span class="line">                results.append(tool_result(tool_use.<span class="built_in">id</span>, <span class="built_in">str</span>(e), is_error=<span class="literal">True</span>))</span><br><span class="line"></span><br><span class="line">        messages.append(&#123;<span class="string">&quot;role&quot;</span>: <span class="string">&quot;user&quot;</span>, <span class="string">&quot;content&quot;</span>: results&#125;)</span><br><span class="line"></span><br><span class="line">    <span class="keyword">raise</span> RuntimeError(<span class="string">f&quot;跑了 <span class="subst">&#123;max_turns&#125;</span> 轮还没收敛&quot;</span>)</span><br></pre></td></tr></table></figure>
+
+<p>对照着看，有四处在伪代码里看不出来，下面一节逐个说。</p>
+<p><img src="https://cdn.nlark.com/yuque/0/2026/png/276041/1784169641277-7538668d-de92-4de6-a917-d44de75fc414.png"></p>
+<p><img src="https://cdn.nlark.com/yuque/0/2026/png/276041/1784169683487-90e9b032-287e-41fe-9a33-f993f45a0708.png"></p>
+<p><img src="https://cdn.nlark.com/yuque/0/2026/png/276041/1784169717713-7d1c862c-ab0c-4439-8fa2-f72c1123a1e0.png"></p>
+<p><img src="https://cdn.nlark.com/yuque/0/2026/png/276041/1784169757224-b97d95e1-048c-4be8-9e08-0d46c1b537ff.png"></p>
+<h2 id="4-这个循环里最容易写错的四件事"><a href="#4-这个循环里最容易写错的四件事" class="headerlink" title="4. 这个循环里最容易写错的四件事"></a>4. 这个循环里最容易写错的四件事</h2><h3 id="出口条件只有一个：没有-tool-use"><a href="#出口条件只有一个：没有-tool-use" class="headerlink" title="出口条件只有一个：没有 tool_use"></a>出口条件只有一个：没有 <code>tool_use</code></h3><p>循环的终止<strong>不看执行了几轮、也不看模型说了什么话</strong>，只看这一轮的 <code>content</code> 里还有没有 <code>tool_use</code>。</p>
+<p>这带来一个反直觉的结论：<strong>模型可能”什么都没干”就结束了。</strong> 它返回一段文字、没有工具调用，循环立刻退出——哪怕你的任务压根没完成。</p>
+<p><strong>循环不判断”任务做完了没有”，它只判断”还要不要调工具”。</strong> 任务完成与否是语义判断，代码层面看不到；只能靠提示词和工具设计去引导。这也是为什么 Agent 的”我帮你做完了”经常不可信——<strong>它说这话的依据只是”我不打算再调工具了”。</strong></p>
+<h3 id="轮数上限不是可选项"><a href="#轮数上限不是可选项" class="headerlink" title="轮数上限不是可选项"></a>轮数上限不是可选项</h3><p><code>while true</code> 加一个会判断失误的模型，就是无限循环。<strong>每转一圈都是一次完整的 API 调用</strong>，烧的是钱和时间。</p>
+<p>上限设多少看任务，常见的是十几到几十轮。触顶之后有两种处理：</p>
+<ul>
+<li><strong>直接抛错</strong> —— 简单，但用户只拿到一个异常</li>
+<li><strong>把”我已经试了 N 轮”作为一条消息喂回去，让模型收尾</strong> —— 多花一次调用，但用户至少拿到一句交代</li>
+</ul>
+<p>第二种体验明显更好，尤其是上限本来就是”正常情况够用、异常情况兜底”的数字。</p>
+<h3 id="工具失败不要抛异常"><a href="#工具失败不要抛异常" class="headerlink" title="工具失败不要抛异常"></a>工具失败不要抛异常</h3><p><code>tool_result</code> 有一个 <code>is_error</code> 字段，就是为这件事准备的。工具执行失败时，正确做法是<strong>把它当成一次成功的结果回传，只是把 <code>is_error</code> 置为 <code>true</code></strong>：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">except</span> Exception <span class="keyword">as</span> e:</span><br><span class="line">    results.append(tool_result(tool_use.<span class="built_in">id</span>, <span class="built_in">str</span>(e), is_error=<span class="literal">True</span>))</span><br></pre></td></tr></table></figure>
+
+<p>为什么？因为<strong>模型看到错误才有机会自己纠正</strong>——文件不存在就换个路径去找，参数写错了就改参数，命令报权限不足就换一条。要是你在 <code>execute_tool</code> 里直接把异常抛出去让整个循环崩掉，模型连”我错在哪”都看不到，什么也学不到。</p>
+<p><strong>「让模型知道失败」比「让程序知道失败」更重要。</strong> 异常是给人看的，<code>is_error</code> 是给模型看的——两条通道都要有。</p>
+<h3 id="一轮里的多个工具要一起回"><a href="#一轮里的多个工具要一起回" class="headerlink" title="一轮里的多个工具要一起回"></a>一轮里的多个工具要一起回</h3><p>模型可能一次返回<strong>多个</strong> <code>tool_use</code>（并行工具调用）。这时候有三个约束：</p>
+<ul>
+<li><strong>所有结果放在同一条 <code>user</code> 消息里。</strong> 一条结果发一条 <code>user</code> 消息，就会变成 <code>user</code>、<code>user</code> 连在一起，直接撞上上一篇 §3 那个”角色必须交替”的报错</li>
+<li><strong>每个结果的 <code>tool_use_id</code> 必须对上各自的 <code>tool_use.id</code>。</strong> 模型可能同时要查三个城市的天气，配错一个它就拿着北京的天气回答上海的问题</li>
+<li><strong>执行顺序可以自己定</strong>（并发跑也行），配对靠的是 id 不是位置</li>
+</ul>
+<h2 id="5-上下文为什么越滚越长"><a href="#5-上下文为什么越滚越长" class="headerlink" title="5. 上下文为什么越滚越长"></a>5. 上下文为什么越滚越长</h2><p><code>messages</code> 是<strong>一直往后追加、从不清空</strong>的。跑到第 10 轮时，这个数组里躺着：</p>
+<ul>
+<li>前 9 轮<strong>所有</strong>的 assistant 消息（含 <code>thinking</code> 块和签名）</li>
+<li>前 9 轮<strong>所有</strong>的工具结果</li>
+<li>加上这一轮新加的</li>
+</ul>
+<p>而且每一轮都要<strong>整个发一遍</strong>——<strong>API 是无状态的，它不记得你上一轮发过什么。</strong> 你看到的”对话”，从头到尾都是你自己在维护的一个数组。</p>
+<p>这就是 Agent 项目里 token 消耗曲线的形状：<strong>不是线性的，是每一轮都比上一轮更贵的平方级。</strong> 一个跑了 30 轮的 Agent，第 30 轮的输入 token 可能是第 1 轮的几十倍——不是因为模型变啰嗦了，是因为历史一直在那儿。</p>
+<p>缓解手段有四条，代价各不相同：</p>
+<table>
+<thead>
+<tr>
+<th>手段</th>
+<th>做法</th>
+<th>代价</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>提示词缓存</strong></td>
+<td>在 <code>system</code> 和历史前段挂 <code>cache_control</code></td>
+<td>要求<strong>前缀完全稳定</strong>——改一个字整段缓存失效</td>
+</tr>
+<tr>
+<td><strong>截断旧工具结果</strong></td>
+<td>把早期冗长的工具输出换成一句摘要</td>
+<td>模型可能”忘了”自己看过什么，开始重复劳动</td>
+</tr>
+<tr>
+<td><strong>压缩上下文</strong></td>
+<td>到阈值时让模型总结前文，替换掉历史</td>
+<td>细节丢失，而且总结本身要花一次调用</td>
+</tr>
+<tr>
+<td><strong>子 Agent</strong></td>
+<td>把探索型任务丢给子 Agent，只把结论带回来</td>
+<td>架构复杂度上一个台阶</td>
+</tr>
+</tbody></table>
+<p>第一条有个连带约束值得单独拎出来：<strong>提示词缓存和”原样回传 thinking”是同一个方向的</strong>——缓存要求你别改历史的前缀，签名要求你别改 thinking 块。两件事都在说同一句话：</p>
+<p><strong>历史一旦写进去，就当它不可变。</strong></p>
+<h2 id="6-AgentEvent：为什么不直接把模型事件往上抛"><a href="#6-AgentEvent：为什么不直接把模型事件往上抛" class="headerlink" title="6. AgentEvent：为什么不直接把模型事件往上抛"></a>6. AgentEvent：为什么不直接把模型事件往上抛</h2><p>上一篇的流式部分停在”把碎片拼回一条完整消息”。但站在 UI 的角度，<strong>它要的恰好不是一条完整消息</strong>——它要的是”现在有字出来了，先显示出来”。</p>
+<p>所以模型事件和 UI 之间要再加一层：<strong>把 LLM 客户端的原始事件，翻译成上层能理解的 AgentEvent。</strong></p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line">模型原始流                     ← SDK 给的 SSE 事件</span><br><span class="line">    ↓</span><br><span class="line">StreamEvent                    ← LLM 客户端的第一层：SSE 事件 → 有类型的对象</span><br><span class="line">    ↓</span><br><span class="line">收集器拼接                     ← 碎片 → 完整的块 / 完整的消息</span><br><span class="line">    ↓</span><br><span class="line">AgentEvent                     ← 上层的语言：文字、工具、第几轮</span><br><span class="line">    ↓</span><br><span class="line">async for event in ...         ← UI / 调用方</span><br></pre></td></tr></table></figure>
+
+<p>两层事件的分工：</p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>StreamEvent</th>
+<th>AgentEvent</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>对应的东西</td>
+<td>一次 API 响应</td>
+<td>一整轮 Agent 循环</td>
+</tr>
+<tr>
+<td>谁产生的</td>
+<td>模型（供应商定义的形状）</td>
+<td>你自己（领域定义）</td>
+</tr>
+<tr>
+<td>粒度</td>
+<td>碎片</td>
+<td>语义</td>
+</tr>
+<tr>
+<td>换供应商</td>
+<td>全变</td>
+<td>不变</td>
+</tr>
+</tbody></table>
+<p><strong>为什么不省掉这一层，让 UI 直接消费 <code>StreamEvent</code>。</strong> 三个理由：</p>
+<p><strong>一、<code>StreamEvent</code> 是供应商的形状。</strong> 里面全是 <code>content_block_delta</code>、<code>partial_json</code> 这种 Anthropic 的说法。UI 一旦认了这些字段，换一家模型就要改 UI——<strong>把供应商的词汇表挡在客户端这一层，是这层最重要的职责之一。</strong></p>
+<p><strong>二、<code>StreamEvent</code> 是碎片的，<code>AgentEvent</code> 是语义的。</strong> 一次工具调用在上游是 <code>content_block_start</code> + 二十个 <code>input_json_delta</code> + <code>content_block_stop</code>，到下游应该只剩有意义的那几个：<strong>工具调用开始 &#x2F; 开始执行 &#x2F; 执行完成</strong>。</p>
+<p><strong>三、有些事件模型根本不知道。</strong> 轮次开始、轮次结束、工具执行完成、整个任务结束、错误——这些不是模型发的，<strong>是你的循环产生的</strong>。它们只能在这一层补。</p>
+<p>一张对照表（接上一篇 §6 那四种 delta）：</p>
+<table>
+<thead>
+<tr>
+<th>上游 StreamEvent</th>
+<th>下游 AgentEvent</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>text_delta</code></td>
+<td>文本增量</td>
+</tr>
+<tr>
+<td><code>thinking_delta</code></td>
+<td>思考增量</td>
+</tr>
+<tr>
+<td><code>signature_delta</code></td>
+<td><strong>不往上抛</strong>，只在客户端内部存着</td>
+</tr>
+<tr>
+<td><code>input_json_delta</code></td>
+<td>工具参数增量（或者干脆等拼完整，一次性抛”工具调用”）</td>
+</tr>
+<tr>
+<td><code>content_block_start</code> &#x2F; <code>stop</code></td>
+<td>块开始 &#x2F; 块结束，也可以合并成轮次开始 &#x2F; 轮次结束</td>
+</tr>
+<tr>
+<td>—</td>
+<td><strong>工具开始执行</strong>（上游没有这个）</td>
+</tr>
+<tr>
+<td>—</td>
+<td><strong>工具执行完成</strong>（上游没有这个）</td>
+</tr>
+<tr>
+<td>—</td>
+<td>任务结束 &#x2F; 错误</td>
+</tr>
+</tbody></table>
+<p>两个设计要点：</p>
+<p><strong><code>signature_delta</code> 不该往上抛。</strong> 它是给下一轮请求用的，UI 拿它一点用没有。<strong>这类”只在 API 之间搬运”的数据要拦在客户端内部</strong>——漏到上层，只会让别人以为它是什么重要的东西，然后开始小心翼翼地存它、传它、最后在某处改坏它。</p>
+<p><strong>「工具开始执行」必须自己补一个事件。</strong> 上游只告诉你”模型想调这个工具”，真正去执行的是你的循环。不补这个事件，UI 就会停在”模型说要调”和”结果出来了”中间空白几秒——<strong>看起来就是卡住了</strong>，而实际上它正在老老实实地跑。</p>
+<p><img src="https://cdn.nlark.com/yuque/0/2026/png/276041/1784169857472-5d9b463c-2f6b-4bb3-8b1d-398e6f2f1d52.png"></p>
+<p><img src="https://cdn.nlark.com/yuque/0/2026/png/276041/1784169871910-73c933af-d525-4853-83c2-e2f5875acd89.png"></p>
+<p><img src="https://cdn.nlark.com/yuque/0/2026/png/276041/1784169956899-d33b7616-4422-4d27-8250-14a0ba1fb7f8.png"></p>
+<p><img src="https://cdn.nlark.com/yuque/0/2026/png/276041/1784170028313-a3bb6753-6596-4577-b9fb-1457ae81bc96.png"></p>
+<h2 id="7-完整的数据流"><a href="#7-完整的数据流" class="headerlink" title="7. 完整的数据流"></a>7. 完整的数据流</h2><p>把这一篇和上一篇接起来，一次 Agent 请求从头到尾是这样流的：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br></pre></td><td class="code"><pre><span class="line">用户输入</span><br><span class="line">  ↓</span><br><span class="line">agent_loop 第 N 轮</span><br><span class="line">  ↓</span><br><span class="line">LLM 客户端：内部消息 → API 形状（role + content）</span><br><span class="line">  ↓</span><br><span class="line">HTTP / SSE</span><br><span class="line">  ↓</span><br><span class="line">模型原始流（SSE 事件）</span><br><span class="line">  ↓  StreamEvent</span><br><span class="line">  ↓  收集器拼接                  ← 碎片拼回完整的块</span><br><span class="line">  ↓</span><br><span class="line">AgentEvent 流  →  UI 实时渲染</span><br><span class="line">  ↓</span><br><span class="line">这一轮结束：有 tool_use 吗？</span><br><span class="line">  ├─ 没有 → 返回，任务结束</span><br><span class="line">  └─ 有   → 执行工具 → 结果包成 tool_result</span><br><span class="line">             → 追加进 messages → 下一轮</span><br><span class="line">                ↑                    │</span><br><span class="line">                └────────────────────┘</span><br></pre></td></tr></table></figure>
+
+<p>三条线在这里汇合，各自对应一类问题：</p>
+<ul>
+<li><strong>消息的线</strong> —— <code>messages</code> 只增不减，每轮整个发一遍 → <strong>上下文管理和成本</strong></li>
+<li><strong>事件的线</strong> —— SSE 碎片 → StreamEvent → 收集 → AgentEvent → UI → <strong>实时渲染</strong></li>
+<li><strong>控制的线</strong> —— <code>while</code> 循环 + 出口条件 + 轮数上限 → <strong>什么时候停</strong></li>
+</ul>
+<h2 id="8-小结"><a href="#8-小结" class="headerlink" title="8. 小结"></a>8. 小结</h2><p><strong>一、ReAct 的核心是交替，不是并行。</strong> Thought 不改环境，Action 才改——当年靠提示词约定 + 文本解析，现在 <code>thinking</code> &#x2F; <code>tool_use</code> &#x2F; <code>tool_result</code> 是 API 的一等公民。</p>
+<p><strong>二、Agent Loop 就是一个 <code>while</code> 循环，出口只有一个。</strong> 判断依据是”这一轮还有没有 <code>tool_use</code>“，<strong>不是”任务做完了没有”</strong>。轮数上限必须有。</p>
+<p><strong>三、工具失败要回传，不要抛出。</strong> 包成 <code>is_error=True</code> 的 <code>tool_result</code>——让模型知道失败，比让程序知道失败更重要。</p>
+<p><strong>四、上下文是平方级增长的</strong>，因为 <code>messages</code> 只增不减、每轮全发。缓存、截断、压缩、子 Agent 是四条路，代价各不相同。历史和签名指向同一个约束：<strong>写进去就别改。</strong></p>
+<p><strong>五、AgentEvent 是给上层的语言。</strong> 上游是供应商的碎片，下游要是语义的事件；签名这类搬运数据拦在客户端内部，工具的执行开始 &#x2F; 结束要自己补。</p>
+<h2 id="参考"><a href="#参考" class="headerlink" title="参考"></a>参考</h2><ul>
+<li>ReAct 原论文（Yao et al., ICLR 2023）：<a target="_blank" rel="noopener" href="https://arxiv.org/abs/2210.03629">https://arxiv.org/abs/2210.03629</a></li>
+<li>上一篇：<a href="https://wywzixin.github.io/agent/llm-request-streaming/">https://wywzixin.github.io/agent/llm-request-streaming/</a></li>
+<li>工具使用（<code>tool_use</code> &#x2F; <code>tool_result</code> &#x2F; <code>is_error</code>）：<a target="_blank" rel="noopener" href="https://platform.claude.com/docs/en/build-with-claude/tool-use">https://platform.claude.com/docs/en/build-with-claude/tool-use</a></li>
+<li>提示词缓存（<code>cache_control</code>）：<a target="_blank" rel="noopener" href="https://platform.claude.com/docs/en/build-with-claude/prompt-caching">https://platform.claude.com/docs/en/build-with-claude/prompt-caching</a></li>
+<li>Adaptive thinking 与 <code>display</code>：<a target="_blank" rel="noopener" href="https://platform.claude.com/docs/en/build-with-claude/adaptive-thinking">https://platform.claude.com/docs/en/build-with-claude/adaptive-thinking</a></li>
+</ul>
+</div><div class="article-licensing box"><div class="licensing-title"><p>ReAct 与 Agent Loop</p><p><a href="https://wywzixin.github.io/agent/react-agent-loop/">https://wywzixin.github.io/agent/react-agent-loop/</a></p></div><div class="licensing-meta level is-mobile"><div class="level-left"><div class="level-item is-narrow"><div><h6>作者</h6><p>wangyawei</p></div></div><div class="level-item is-narrow"><div><h6>发布于</h6><p>2026-09-15</p></div></div><div class="level-item is-narrow"><div><h6>更新于</h6><p>2026-09-15</p></div></div><div class="level-item is-narrow"><div><h6>许可协议</h6><p><a class="icons" rel="noopener" target="_blank" title="Creative Commons" href="https://creativecommons.org/"><i class="icon fab fa-creative-commons"></i></a><a class="icons" rel="noopener" target="_blank" title="Attribution" href="https://creativecommons.org/licenses/by/4.0/"><i class="icon fab fa-creative-commons-by"></i></a><a class="icons" rel="noopener" target="_blank" title="Noncommercial" href="https://creativecommons.org/licenses/by-nc/4.0/"><i class="icon fab fa-creative-commons-nc"></i></a></p></div></div></div></div></div><div class="article-tags is-size-7 mb-4"><span class="mr-2">#</span><a class="link-muted mr-2" rel="tag" href="/tags/agent/">agent</a><a class="link-muted mr-2" rel="tag" href="/tags/ReAct/">ReAct</a><a class="link-muted mr-2" rel="tag" href="/tags/Agent-Loop/">Agent Loop</a></div><!--!--></article></div><!--!--><nav class="post-navigation mt-4 level is-mobile"><div class="level-start"><a class="article-nav-prev level level-item link-muted" href="/agent/llm-request-streaming/"><i class="level-item fas fa-chevron-left"></i><span class="level-item">LLM 请求与流式响应</span></a></div><div class="level-end"><a class="article-nav-next level level-item link-muted" href="/agent/mcp-protocol/"><span class="level-item">MCP 协议与工具接入</span><i class="level-item fas fa-chevron-right"></i></a></div></nav><!--!--></div><div class="column column-left is-4-tablet is-4-desktop is-3-widescreen  order-1"><div class="card widget" data-type="profile"><div class="card-content"><nav class="level"><div class="level-item has-text-centered flex-shrink-1"><div><figure class="image is-128x128 mx-auto mb-2"><img class="avatar is-rounded" src="/img/avatar.svg" alt="王亚伟"></figure><p class="title is-size-4 is-block" style="line-height:inherit;">王亚伟</p><p class="is-size-6 is-block">3D · AI</p><p class="is-size-6 is-flex justify-content-center"><i class="fas fa-map-marker-alt mr-1"></i><span>北京</span></p></div></div></nav><nav class="level is-mobile"><div class="level-item has-text-centered is-marginless"><div><p class="heading">文章</p><a href="/archives/"><p class="title">55</p></a></div></div><div class="level-item has-text-centered is-marginless"><div><p class="heading">分类</p><a href="/categories/"><p class="title">9</p></a></div></div><div class="level-item has-text-centered is-marginless"><div><p class="heading">标签</p><a href="/tags/"><p class="title">64</p></a></div></div></nav><div class="level"><a class="level-item button is-primary is-rounded" href="https://github.com/wywzixin" target="_blank" rel="me noopener">关注我</a></div><div class="level is-mobile is-multiline"><a class="level-item button is-transparent is-marginless" target="_blank" rel="me noopener" title="Github" href="https://github.com/wywzixin"><i class="fab fa-github"></i></a><a class="level-item button is-transparent is-marginless" target="_blank" rel="me noopener" title="Facebook" href="https://facebook.com"><i class="fab fa-facebook"></i></a><a class="level-item button is-transparent is-marginless" target="_blank" rel="me noopener" title="Twitter" href="https://twitter.com"><i class="fab fa-twitter"></i></a><a class="level-item button is-transparent is-marginless" target="_blank" rel="me noopener" title="Dribbble" href="https://dribbble.com"><i class="fab fa-dribbble"></i></a><a class="level-item button is-transparent is-marginless" target="_blank" rel="me noopener" title="RSS" href="/"><i class="fas fa-rss"></i></a></div></div></div><!--!--><div class="card widget" data-type="categories"><div class="card-content"><div class="menu"><h3 class="menu-label">分类</h3><ul class="menu-list"><li><a class="level is-mobile" href="/categories/cesium/"><span class="level-start"><span class="level-item">cesium</span></span><span class="level-end"><span class="level-item tag">24</span></span></a></li><li><a class="level is-mobile" href="/categories/threejs/"><span class="level-start"><span class="level-item">threejs</span></span><span class="level-end"><span class="level-item tag">6</span></span></a></li><li><a class="level is-mobile" href="/categories/%E5%8C%97%E6%96%97%E7%BD%91%E6%A0%BC%E6%80%A7%E8%83%BD%E4%BC%98%E5%8C%96/"><span class="level-start"><span class="level-item">北斗网格性能优化</span></span><span class="level-end"><span class="level-item tag">7</span></span></a></li><li><a class="level is-mobile" href="/categories/%E5%9B%BE%E5%BD%A2%E5%AD%A6/"><span class="level-start"><span class="level-item">图形学</span></span><span class="level-end"><span class="level-item tag">1</span></span></a></li><li><a class="level is-mobile" href="/categories/vue/"><span class="level-start"><span class="level-item">vue</span></span><span class="level-end"><span class="level-item tag">2</span></span></a></li><li><a class="level is-mobile" href="/categories/agent/"><span class="level-start"><span class="level-item">agent</span></span><span class="level-end"><span class="level-item tag">8</span></span></a></li><li><a class="level is-mobile" href="/categories/claude-code/"><span class="level-start"><span class="level-item">claude code</span></span><span class="level-end"><span class="level-item tag">2</span></span></a></li><li><a class="level is-mobile" href="/categories/python/"><span class="level-start"><span class="level-item">python</span></span><span class="level-end"><span class="level-item tag">3</span></span></a></li><li><a class="level is-mobile" href="/categories/%E5%A4%A7%E6%A8%A1%E5%9E%8B/"><span class="level-start"><span class="level-item">大模型</span></span><span class="level-end"><span class="level-item tag">2</span></span></a></li></ul></div></div></div><div class="card widget" data-type="tags"><div class="card-content"><div class="menu"><h3 class="menu-label">标签</h3><div class="field is-grouped is-grouped-multiline"><div class="control"><a class="tags has-addons" href="/tags/Agent-Loop/"><span class="tag">Agent Loop</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/Cesium/"><span class="tag">Cesium</span><span class="tag">7</span></a></div><div class="control"><a class="tags has-addons" href="/tags/DrawCommand/"><span class="tag">DrawCommand</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/ENU/"><span class="tag">ENU</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/Embedding/"><span class="tag">Embedding</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/FAISS/"><span class="tag">FAISS</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/Function-Calling/"><span class="tag">Function Calling</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/GPT-3/"><span class="tag">GPT-3</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/GPU-Instancing/"><span class="tag">GPU Instancing</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/L6/"><span class="tag">L6</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/L7/"><span class="tag">L7</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/LLM/"><span class="tag">LLM</span><span class="tag">2</span></a></div><div class="control"><a class="tags has-addons" href="/tags/LOD/"><span class="tag">LOD</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/LRU/"><span class="tag">LRU</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/LangChain/"><span class="tag">LangChain</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/MCP/"><span class="tag">MCP</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/PBR/"><span class="tag">PBR</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/Pinecone/"><span class="tag">Pinecone</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/RAG/"><span class="tag">RAG</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/RTE/"><span class="tag">RTE</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/ReAct/"><span class="tag">ReAct</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/SSE/"><span class="tag">SSE</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/Shader/"><span class="tag">Shader</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/Token/"><span class="tag">Token</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/Transferable/"><span class="tag">Transferable</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/Transformer/"><span class="tag">Transformer</span><span class="tag">2</span></a></div><div class="control"><a class="tags has-addons" href="/tags/Web-Worker/"><span class="tag">Web Worker</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/WebGL/"><span class="tag">WebGL</span><span class="tag">2</span></a></div><div class="control"><a class="tags has-addons" href="/tags/agent/"><span class="tag">agent</span><span class="tag">8</span></a></div><div class="control"><a class="tags has-addons" href="/tags/asyncio/"><span class="tag">asyncio</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/cesium/"><span class="tag">cesium</span><span class="tag">24</span></a></div><div class="control"><a class="tags has-addons" href="/tags/claude-code/"><span class="tag">claude code</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/markstream/"><span class="tag">markstream</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/prompt-cache/"><span class="tag">prompt cache</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/python/"><span class="tag">python</span><span class="tag">3</span></a></div><div class="control"><a class="tags has-addons" href="/tags/threejs/"><span class="tag">threejs</span><span class="tag">6</span></a></div><div class="control"><a class="tags has-addons" href="/tags/vue/"><span class="tag">vue</span><span class="tag">2</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E4%B8%8A%E4%B8%8B%E6%96%87%E5%8E%8B%E7%BC%A9/"><span class="tag">上下文压缩</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E4%B8%8A%E4%B8%8B%E6%96%87%E5%B7%A5%E7%A8%8B/"><span class="tag">上下文工程</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E5%86%85%E5%AD%98%E7%AE%A1%E7%90%86/"><span class="tag">内存管理</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E5%8C%97%E6%96%97%E7%BD%91%E6%A0%BC/"><span class="tag">北斗网格</span><span class="tag">7</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E5%8F%82%E6%95%B0%E9%87%8F/"><span class="tag">参数量</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E5%90%8E%E5%A4%84%E7%90%86/"><span class="tag">后处理</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E5%90%91%E9%87%8F%E6%95%B0%E6%8D%AE%E5%BA%93/"><span class="tag">向量数据库</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E5%93%8D%E5%BA%94%E5%BC%8F%E5%8E%9F%E7%90%86/"><span class="tag">响应式原理</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E5%9B%BE%E5%BD%A2%E5%AD%A6/"><span class="tag">图形学</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E5%A4%9A%E5%A4%B4%E6%B3%A8%E6%84%8F%E5%8A%9B/"><span class="tag">多头注意力</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E5%A4%A7%E6%A8%A1%E5%9E%8B/"><span class="tag">大模型</span><span class="tag">2</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E5%B7%A5%E5%85%B7%E8%B0%83%E7%94%A8/"><span class="tag">工具调用</span><span class="tag">2</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E5%B9%B6%E5%8F%91/"><span class="tag">并发</span><span class="tag">2</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E6%9D%90%E8%B4%A8/"><span class="tag">材质</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E6%9E%B6%E6%9E%84%E8%AE%BE%E8%AE%A1/"><span class="tag">架构设计</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E6%A3%80%E7%B4%A2%E5%A2%9E%E5%BC%BA%E7%94%9F%E6%88%90/"><span class="tag">检索增强生成</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E6%B3%A8%E6%84%8F%E5%8A%9B%E6%9C%BA%E5%88%B6/"><span class="tag">注意力机制</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E6%B5%81%E5%BC%8F%E5%93%8D%E5%BA%94/"><span class="tag">流式响应</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E6%B5%81%E5%BC%8F%E6%B8%B2%E6%9F%93/"><span class="tag">流式渲染</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E7%A9%BA%E9%97%B4%E5%88%86%E5%9D%97/"><span class="tag">空间分块</span><span class="tag">2</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E7%BA%BF%E7%A8%8B%E6%B1%A0/"><span class="tag">线程池</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E7%BC%93%E5%AD%98/"><span class="tag">缓存</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E8%A7%86%E9%94%A5%E5%89%94%E9%99%A4/"><span class="tag">视锥剔除</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E8%AE%B0%E5%BF%86%E7%B3%BB%E7%BB%9F/"><span class="tag">记忆系统</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E8%BD%AE%E5%BB%93%E7%BA%BF/"><span class="tag">轮廓线</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E9%AB%98%E5%BA%A6%E5%88%87%E7%89%87/"><span class="tag">高度切片</span><span class="tag">1</span></a></div></div></div></div></div><div class="card widget" data-type="subscribe-email"><div class="card-content"><div class="menu"><h3 class="menu-label">订阅更新</h3><form action="https://feedburner.google.com/fb/a/mailverify" method="post" target="popupwindow" onsubmit="window.open(&#039;https://feedburner.google.com/fb/a/mailverify?uri=&#039;,&#039;popupwindow&#039;,&#039;scrollbars=yes,width=550,height=520&#039;);return true"><input type="hidden" value="" name="uri"><input type="hidden" name="loc" value="en_US"><div class="field has-addons"><div class="control has-icons-left is-expanded"><input class="input" name="email" type="email" placeholder="Email"><span class="icon is-small is-left"><i class="fas fa-envelope"></i></span></div><div class="control"><input class="button" type="submit" value="订阅"></div></div></form></div></div></div><div class="column-right-shadow is-hidden-widescreen"></div></div><div class="column column-right is-4-tablet is-4-desktop is-3-widescreen is-hidden-touch is-hidden-desktop-only order-3"><div class="card widget" data-type="recent-posts"><div class="card-content"><h3 class="menu-label">最新文章</h3><article class="media"><div class="media-content"><p class="date"><time dateTime="2026-09-15T00:00:00.000Z">2026-09-15</time></p><p class="title"><a href="/agent/llm-request-streaming/">LLM 请求与流式响应</a></p><p class="categories"><a href="/categories/agent/">agent</a></p></div></article><article class="media"><div class="media-content"><p class="date"><time dateTime="2026-09-14T23:00:00.000Z">2026-09-15</time></p><p class="title"><a href="/agent/react-agent-loop/">ReAct 与 Agent Loop</a></p><p class="categories"><a href="/categories/agent/">agent</a></p></div></article><article class="media"><div class="media-content"><p class="date"><time dateTime="2026-09-14T22:00:00.000Z">2026-09-15</time></p><p class="title"><a href="/agent/mcp-protocol/">MCP 协议与工具接入</a></p><p class="categories"><a href="/categories/agent/">agent</a></p></div></article><article class="media"><div class="media-content"><p class="date"><time dateTime="2026-09-14T21:00:00.000Z">2026-09-15</time></p><p class="title"><a href="/agent/function-calling/">Function Calling介绍</a></p><p class="categories"><a href="/categories/agent/">agent</a></p></div></article><article class="media"><div class="media-content"><p class="date"><time dateTime="2026-09-14T20:00:00.000Z">2026-09-15</time></p><p class="title"><a href="/agent/context-compaction/">上下文压缩与 Token 管理</a></p><p class="categories"><a href="/categories/agent/">agent</a></p></div></article></div></div><div class="card widget" data-type="archives"><div class="card-content"><div class="menu"><h3 class="menu-label">归档</h3><ul class="menu-list"><li><a class="level is-mobile" href="/archives/2026/09/"><span class="level-start"><span class="level-item">九月 2026</span></span><span class="level-end"><span class="level-item tag">25</span></span></a></li><li><a class="level is-mobile" href="/archives/2026/03/"><span class="level-start"><span class="level-item">三月 2026</span></span><span class="level-end"><span class="level-item tag">4</span></span></a></li><li><a class="level is-mobile" href="/archives/2025/03/"><span class="level-start"><span class="level-item">三月 2025</span></span><span class="level-end"><span class="level-item tag">25</span></span></a></li><li><a class="level is-mobile" href="/archives/2025/01/"><span class="level-start"><span class="level-item">一月 2025</span></span><span class="level-end"><span class="level-item tag">1</span></span></a></li></ul></div></div></div></div></div></div></section><footer class="footer"><div class="container"><div class="level"><div class="level-start"><a class="footer-logo is-block mb-2" href="/"><img src="/img/logo.svg" alt="Hexo" height="28"></a><p class="is-size-7"><span>&copy; 2026 wangyawei</span>  Powered by <a href="https://hexo.io/" target="_blank" rel="noopener">Hexo</a> &amp; <a href="https://github.com/ppoffice/hexo-theme-icarus" target="_blank" rel="noopener">Icarus</a></p><p class="is-size-7">© 2019</p></div><div class="level-end"><div class="field has-addons"><p class="control"><a class="button is-transparent is-large" target="_blank" rel="noopener" title="Creative Commons" href="https://creativecommons.org/"><i class="fab fa-creative-commons"></i></a></p><p class="control"><a class="button is-transparent is-large" target="_blank" rel="noopener" title="Attribution 4.0 International" href="https://creativecommons.org/licenses/by/4.0/"><i class="fab fa-creative-commons-by"></i></a></p><p class="control"><a class="button is-transparent is-large" target="_blank" rel="noopener" title="Download on GitHub" href="https://github.com/ppoffice/hexo-theme-icarus"><i class="fab fa-github"></i></a></p></div></div></div></div></footer><script src="https://cdn.jsdelivr.net/npm/jquery@3.3.1/dist/jquery.min.js"></script><script src="https://cdn.jsdelivr.net/npm/moment@2.22.2/min/moment-with-locales.min.js"></script><script src="https://cdn.jsdelivr.net/npm/clipboard@2.0.4/dist/clipboard.min.js" defer></script><script>moment.locale("zh-cn");</script><script>var IcarusThemeSettings = {
+            article: {
+                highlight: {
+                    clipboard: true,
+                    fold: 'unfolded'
+                }
+            }
+        };</script><script data-pjax src="/js/column.js"></script><a id="back-to-top" title="回到顶端" href="javascript:;"><i class="fas fa-chevron-up"></i></a><script data-pjax src="/js/back_to_top.js" defer></script><!--!--><!--!--><!--!--><script src="https://cdn.jsdelivr.net/npm/cookieconsent@3.1.1/build/cookieconsent.min.js" defer></script><script>window.addEventListener("load", () => {
+      window.cookieconsent.initialise({
+        type: "info",
+        theme: "edgeless",
+        static: false,
+        position: "bottom-left",
+        content: {
+          message: "此网站使用Cookie来改善您的体验。",
+          dismiss: "知道了！",
+          allow: "允许使用Cookie",
+          deny: "拒绝",
+          link: "了解更多",
+          policy: "Cookie政策",
+          href: "https://www.cookiesandyou.com/",
+        },
+        palette: {
+          popup: {
+            background: "#edeff5",
+            text: "#838391"
+          },
+          button: {
+            background: "#4b81e8"
+          },
+        },
+      });
+    });</script><script src="https://cdn.jsdelivr.net/npm/lightgallery@1.10.0/dist/js/lightgallery.min.js" defer></script><script src="https://cdn.jsdelivr.net/npm/justifiedGallery@3.8.1/dist/js/jquery.justifiedGallery.min.js" defer></script><script>window.addEventListener("load", () => {
+            if (typeof $.fn.lightGallery === 'function') {
+                $('.article').lightGallery({ selector: '.gallery-item' });
+            }
+            if (typeof $.fn.justifiedGallery === 'function') {
+                if ($('.justified-gallery > p > .gallery-item').length) {
+                    $('.justified-gallery > p > .gallery-item').unwrap();
+                }
+                $('.justified-gallery').justifiedGallery();
+            }
+        });</script><!--!--><!--!--><script src="https://cdn.jsdelivr.net/npm/pjax@0.2.8/pjax.min.js"></script><script src="/js/pjax.js"></script><!--!--><!--!--><!--!--><script data-pjax src="/js/main.js" defer></script><div class="searchbox"><div class="searchbox-container"><div class="searchbox-header"><div class="searchbox-input-container"><input class="searchbox-input" type="text" placeholder="想要查找什么..."></div><a class="searchbox-close" href="javascript:;">×</a></div><div class="searchbox-body"></div></div></div><script data-pjax src="/js/insight.js" defer></script><script data-pjax>document.addEventListener('DOMContentLoaded', function () {
+            loadInsight({"contentUrl":"/content.json"}, {"hint":"想要查找什么...","untitled":"(无标题)","posts":"文章","pages":"页面","categories":"分类","tags":"标签"});
+        });</script></body></html>

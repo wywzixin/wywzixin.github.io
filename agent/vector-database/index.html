@@ -1,0 +1,403 @@
+<!doctype html>
+<html lang="zh"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1"><meta><meta name="referrer" content="no-referrer"><title>向量数据库：FAISS 与 Pinecone - Hexo</title><link rel="manifest" href="/manifest.json"><meta name="application-name" content="Hexo"><meta name="msapplication-TileImage" content="/img/favicon.svg"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="Hexo"><meta name="apple-mobile-web-app-status-bar-style" content="default"><meta name="description" content="向量数据库是 RAG 里的存储层。这篇先分清「库」和「数据库」——Faiss 严格说是个库，不是数据库，这一条解释了它为什么原生不支持过滤、为什么过滤要 fetch_k 再筛；然后是那个几乎不支持的「修改数据」（只会删了重加，原因在 ANN 索引结构），以及相关性评分里 √2 是怎么来的、为什么换个评分函数阈值就不能用了。"><meta property="og:type" content="blog"><meta property="og:title" content="向量数据库：FAISS 与 Pinecone"><meta property="og:url" content="https://wywzixin.github.io/agent/vector-database/"><meta property="og:site_name" content="Hexo"><meta property="og:description" content="向量数据库是 RAG 里的存储层。这篇先分清「库」和「数据库」——Faiss 严格说是个库，不是数据库，这一条解释了它为什么原生不支持过滤、为什么过滤要 fetch_k 再筛；然后是那个几乎不支持的「修改数据」（只会删了重加，原因在 ANN 索引结构），以及相关性评分里 √2 是怎么来的、为什么换个评分函数阈值就不能用了。"><meta property="og:locale" content="zh_CN"><meta property="og:image" content="https://wywzixin.github.io/img/og_image.png"><meta property="article:published_time" content="2026-09-14T17:00:00.000Z"><meta property="article:modified_time" content="2026-09-14T17:19:06.151Z"><meta property="article:author" content="wangyawei"><meta property="article:tag" content="agent"><meta property="article:tag" content="向量数据库"><meta property="article:tag" content="FAISS"><meta property="article:tag" content="Pinecone"><meta property="article:tag" content="LangChain"><meta property="twitter:card" content="summary"><meta property="twitter:image:src" content="https://wywzixin.github.io/img/og_image.png"><script type="application/ld+json">{"@context":"https://schema.org","@type":"BlogPosting","mainEntityOfPage":{"@type":"WebPage","@id":"https://wywzixin.github.io/agent/vector-database/"},"headline":"向量数据库：FAISS 与 Pinecone","image":["https://wywzixin.github.io/img/og_image.png"],"datePublished":"2026-09-14T17:00:00.000Z","dateModified":"2026-09-14T17:19:06.151Z","author":{"@type":"Person","name":"wangyawei"},"publisher":{"@type":"Organization","name":"Hexo","logo":{"@type":"ImageObject","url":"https://wywzixin.github.io/img/logo.svg"}},"description":"向量数据库是 RAG 里的存储层。这篇先分清「库」和「数据库」——Faiss 严格说是个库，不是数据库，这一条解释了它为什么原生不支持过滤、为什么过滤要 fetch_k 再筛；然后是那个几乎不支持的「修改数据」（只会删了重加，原因在 ANN 索引结构），以及相关性评分里 √2 是怎么来的、为什么换个评分函数阈值就不能用了。"}</script><link rel="canonical" href="https://wywzixin.github.io/agent/vector-database/"><link rel="icon" href="/img/favicon.svg"><style>html,body{background:#f7f7f7}</style><link rel="stylesheet" href="https://use.fontawesome.com/releases/v6.0.0/css/all.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js@11.7.0/styles/atom-one-dark.css"><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Ubuntu:wght@400;600&amp;family=Source+Code+Pro"><link rel="stylesheet" href="/css/default.css"><!--!--><!--!--><!--!--><!--!--><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/cookieconsent@3.1.1/build/cookieconsent.min.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/lightgallery@1.10.0/dist/css/lightgallery.min.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/justifiedGallery@3.8.1/dist/css/justifiedGallery.min.css"><!--!--><!--!--><!--!--><style>.pace{-webkit-pointer-events:none;pointer-events:none;-webkit-user-select:none;-moz-user-select:none;user-select:none}.pace-inactive{display:none}.pace .pace-progress{background:#3273dc;position:fixed;z-index:2000;top:0;right:100%;width:100%;height:2px}</style><script src="https://cdn.jsdelivr.net/npm/pace-js@1.2.4/pace.min.js"></script><!--!--><!--!--><!-- hexo injector head_end start --><script>
+  (function () {
+      function switchTab() {
+          if (!location.hash) {
+            return;
+          }
+
+          const id = '#' + CSS.escape(location.hash.substring(1));
+          const $tabMenu = document.querySelector(`.tabs a[href="${id}"]`);
+          if (!$tabMenu) {
+            return;
+          }
+
+          const $tabMenuContainer = $tabMenu.parentElement.parentElement;
+          Array.from($tabMenuContainer.children).forEach($menu => $menu.classList.remove('is-active'));
+          Array.from($tabMenuContainer.querySelectorAll('a'))
+              .map($menu => document.getElementById($menu.getAttribute("href").substring(1)))
+              .forEach($content => $content.classList.add('is-hidden'));
+
+          if ($tabMenu) {
+              $tabMenu.parentElement.classList.add('is-active');
+          }
+          const $activeTab = document.querySelector(id);
+          if ($activeTab) {
+              $activeTab.classList.remove('is-hidden');
+          }
+      }
+      switchTab();
+      window.addEventListener('hashchange', switchTab, false);
+  })();
+  </script><!-- hexo injector head_end end --><meta name="generator" content="Hexo 7.3.0"></head><body class="is-3-column"><nav class="navbar navbar-main"><div class="container navbar-container"><div class="navbar-brand justify-content-center"><a class="navbar-item navbar-logo" href="/"><img src="/img/logo.svg" alt="Hexo" height="28"></a></div><div class="navbar-menu"><div class="navbar-start"><a class="navbar-item" href="/">首页</a><a class="navbar-item" href="/archives">归档</a><a class="navbar-item" href="/categories">分类</a><a class="navbar-item" href="/tags">标签</a><a class="navbar-item" href="/about">关于</a></div><div class="navbar-end"><a class="navbar-item" target="_blank" rel="noopener" title="Download on GitHub" href="https://github.com/ppoffice/hexo-theme-icarus"><i class="fab fa-github"></i></a><a class="navbar-item search" title="搜索" href="javascript:;"><i class="fas fa-search"></i></a></div></div></div></nav><section class="section"><div class="container"><div class="columns"><div class="column order-2 column-main is-8-tablet is-8-desktop is-6-widescreen"><div class="card"><article class="card-content article" role="article"><div class="article-meta is-size-7 is-uppercase level is-mobile"><div class="level-left"><span class="level-item"><time dateTime="2026-09-14T17:00:00.000Z" title="2026/9/15 01:00:00">2026-09-15</time>发表</span><span class="level-item"><time dateTime="2026-09-14T17:19:06.151Z" title="2026/9/15 01:19:06">2026-09-15</time>更新</span><span class="level-item"><a class="link-muted" href="/categories/agent/">agent</a></span><span class="level-item">38 分钟读完 (大约5650个字)</span></div></div><h1 class="title is-3 is-size-4-mobile">向量数据库：FAISS 与 Pinecone</h1><div class="content"><p><strong>向量数据库是 RAG 流水线里的存储层：把 embedding 之后的向量存起来，支持按相似度找出最近的若干条。</strong></p>
+<p>它接在 <a href="/agent/rag/">RAG</a> 的 Indexing 和 Retrieval 之间——文档切块、向量化之后存进来；用户提问时转成向量，从这里捞出最近的几个块。</p>
+<p>有一个区分要先说，因为它解释了后面几乎所有行为差异：</p>
+<blockquote>
+<p><strong>Faiss 是「库」，不是「数据库」。</strong></p>
+</blockquote>
+<p>这不是抠字眼。<strong>库和数据库能做的事差得很远，而你踩的坑基本都在这个差别里。</strong></p>
+<span id="more"></span>
+
+<h2 id="1-先分清「库」和「数据库」"><a href="#1-先分清「库」和「数据库」" class="headerlink" title="1. 先分清「库」和「数据库」"></a>1. 先分清「库」和「数据库」</h2><table>
+<thead>
+<tr>
+<th></th>
+<th>库（library）</th>
+<th>数据库（database &#x2F; server）</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>形态</td>
+<td>进程内的一个数据结构</td>
+<td>独立进程，或托管服务</td>
+</tr>
+<tr>
+<td>访问方式</td>
+<td>函数调用</td>
+<td>网络 API</td>
+</tr>
+<tr>
+<td>元数据</td>
+<td><strong>没有</strong>（只管向量）</td>
+<td>有自己的元数据存储</td>
+</tr>
+<tr>
+<td>命名空间 &#x2F; 权限 &#x2F; 备份</td>
+<td><strong>没有</strong></td>
+<td>有</td>
+</tr>
+<tr>
+<td>例子</td>
+<td><strong>Faiss</strong>、Annoy、hnswlib</td>
+<td>Milvus、Weaviate、Pinecone、Qdrant</td>
+</tr>
+</tbody></table>
+<p><strong>Faiss 里没有「记录」这个概念——它只有向量和一个 id。</strong></p>
+<p>这句话能推出三个你可能已经遇到过的问题：</p>
+<p><strong>一、为什么 Faiss 原生不支持过滤？</strong> 因为 Faiss 里根本没有元数据这个东西。原文、页码、作者这些，是你（或 LangChain）在它外面另外存的一份。</p>
+<p><strong>二、为什么 Faiss 的过滤要「先多取再筛」？</strong> 过滤发生在 Faiss 之外。所以要先把更多的候选从 Faiss 里取出来，再在外面筛。</p>
+<p><strong>三、为什么 Pinecone 的过滤是原生的？</strong> 因为元数据是它自己索引的一部分，可以在检索的同一趟里做。</p>
+<p>按这个标准重新看常见的那个三分法：</p>
+<table>
+<thead>
+<tr>
+<th>分类</th>
+<th>例子</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>本地文件</strong></td>
+<td><strong>Faiss</strong></td>
+<td>就是「库」——数据落在本地文件，靠函数调用检索</td>
+</tr>
+<tr>
+<td><strong>本地部署 + API</strong></td>
+<td><strong>Milvus</strong>、Weaviate</td>
+<td>是真正的数据库，只是可以自己部署</td>
+</tr>
+<tr>
+<td><strong>云端托管 API</strong></td>
+<td><strong>Pinecone</strong>、腾讯云 VectorDB</td>
+<td>数据库，但运维交给别人</td>
+</tr>
+</tbody></table>
+<p>这个划分里有一个放错位置的：<strong>Annoy 不是「本地部署 API 向量数据库」。</strong></p>
+<p>Annoy（Approximate Nearest Neighbors Oh Yeah）是 Spotify 开源的<strong>库</strong>——跟 Faiss 同一类。它把索引建成文件、<strong>建好之后只读</strong>，没有服务进程、没有网络 API。所以它该待在第一行。</p>
+<p>另外这个三分法的边界也在变模糊：<strong>Milvus Lite</strong> 让 Milvus 能当本地库跑；反过来，<strong>Faiss 也有第三方把它包装成服务</strong>的。所以分类是帮你建立直觉的，不是严格的。</p>
+<h3 id="各自的特点"><a href="#各自的特点" class="headerlink" title="各自的特点"></a>各自的特点</h3><table>
+<thead>
+<tr>
+<th></th>
+<th>特点</th>
+<th>优势</th>
+<th>局限</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>Faiss</strong></td>
+<td>Meta（原 Facebook AI Research）开源，专注高性能相似性搜索，适合大规模<strong>静态</strong>数据集</td>
+<td>检索速度快，支持多种索引类型（IVF &#x2F; HNSW &#x2F; PQ……）</td>
+<td><strong>偏静态</strong>：更新和删除都麻烦，没有元数据、没有服务</td>
+</tr>
+<tr>
+<td><strong>Milvus</strong></td>
+<td>开源，支持分布式架构和<strong>动态</strong>数据更新</td>
+<td>扩展性强，数据管理功能灵活</td>
+<td>要自己运维（或另找托管版）</td>
+</tr>
+<tr>
+<td><strong>Pinecone</strong></td>
+<td>托管的云原生向量数据库，支持高性能向量搜索</td>
+<td>完全托管，部署简单，适合大规模生产环境</td>
+<td>数据要出网，按量付费；本地调试不方便</td>
+</tr>
+</tbody></table>
+<p><strong>「静态」还是「动态」是这里最实质的一条分界线：Faiss 假设你建一次库、然后一直查；Milvus 和 Pinecone 假设数据一直在变。</strong></p>
+<h3 id="还会听到的几个"><a href="#还会听到的几个" class="headerlink" title="还会听到的几个"></a>还会听到的几个</h3><table>
+<thead>
+<tr>
+<th></th>
+<th>一句话</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>Chroma</strong></td>
+<td>最轻的一个，能跑在进程里、也能起服务；LangChain 教程里默认用的就是它</td>
+</tr>
+<tr>
+<td><strong>Qdrant</strong></td>
+<td>Rust 写的，自托管友好，带原生过滤</td>
+</tr>
+<tr>
+<td><strong>pgvector</strong></td>
+<td><strong>PostgreSQL 的扩展</strong>——如果你的数据本来就在 PG 里，加它比引入一个新数据库划算得多</td>
+</tr>
+</tbody></table>
+<p>最后那个值得单独记一笔：<strong>很多时候你不需要一个新的数据库，只需要给已有的数据库加一个扩展。</strong></p>
+<h3 id="上手路径"><a href="#上手路径" class="headerlink" title="上手路径"></a>上手路径</h3><p>有个很好用的比喻：<strong>把向量数据库当成一个 Excel 电子表格。</strong> 按这个顺序学：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">安装 → 写入数据 → 查找数据 → 删除数据 → 更新数据 → 保存数据</span><br></pre></td></tr></table></figure>
+
+<p>它比 SQL 数据库好学，因为<strong>功能集小得多</strong>——没有 JOIN、没有子查询、没有复杂的聚合，<strong>甚至没有事务</strong>。</p>
+<p>但清单里那个「更新数据」要打个星号：按下一节讲的，向量数据库基本只支持「删除后重新新增」。<strong>这一步得拆成两步做。</strong></p>
+<h2 id="2-一个共同的设计：不会改，只会删了重加"><a href="#2-一个共同的设计：不会改，只会删了重加" class="headerlink" title="2. 一个共同的设计：不会改，只会删了重加"></a>2. 一个共同的设计：不会改，只会删了重加</h2><p>向量数据库普遍支持这些操作：</p>
+<p><strong>新增数据、检索数据、带得分检索、带条件筛选检索、删除数据。</strong></p>
+<p>但<strong>几乎都不支持直接修改数据</strong>。想改一条，做法是：<strong>删除后重新新增。</strong></p>
+<p>这不是偷懒，是索引结构决定的。</p>
+<p>向量检索靠的是<strong>近似最近邻（ANN）索引</strong>——HNSW 的一张图、IVF 的一组聚类中心、PQ 的一套量化码本。这些东西都是<strong>建索引的时候算出来的</strong>：</p>
+<ul>
+<li><strong>插入</strong>一个新点很便宜：HNSW 只要给它连几条边，IVF 只要归到最近的簇</li>
+<li><strong>修改</strong>一个已有点的位置很贵：HNSW 里它周围的边要重连（删一个点会让图局部不连通），IVF 里它可能该换簇了</li>
+</ul>
+<p>也就是说，改一个点的代价跟重建一小片索引差不多。<strong>如果允许频繁修改，维护索引的开销会盖过检索本身带来的收益。</strong></p>
+<p>顺带一个观察：这也解释了为什么<strong>大多数向量数据库不提供传统意义上跨多行的多语句事务</strong>。它的写入模型天然就是「追加 + 删除标记」，没有「改一批行、要么全成要么全滚」这个场景。</p>
+<h2 id="3-LangChain-里用-Faiss：写入、检索、删除、持久化"><a href="#3-LangChain-里用-Faiss：写入、检索、删除、持久化" class="headerlink" title="3. LangChain 里用 Faiss：写入、检索、删除、持久化"></a>3. LangChain 里用 Faiss：写入、检索、删除、持久化</h2><h3 id="装"><a href="#装" class="headerlink" title="装"></a>装</h3><figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">pip install -U langchain-community faiss-cpu langchain-openai tiktoken</span><br></pre></td></tr></table></figure>
+
+<p><strong>Faiss 本体是 C++ 写的，Python 只是一层接口</strong>，所以要装编译好的轮子：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">pip install faiss-cpu          <span class="comment"># CPU</span></span><br><span class="line"></span><br><span class="line">pip install faiss-gpu          <span class="comment"># GPU（需要先装好 CUDA）</span></span><br></pre></td></tr></table></figure>
+
+<p>它支持 Linux &#x2F; macOS &#x2F; Windows。官方给出的数据是：<strong>百万级向量的相似性检索可以做到 &lt;10ms</strong>——代价是搜的是近似结果，不是精确结果（这是所有 ANN 索引共同的交换）。</p>
+<h3 id="写入"><a href="#写入" class="headerlink" title="写入"></a>写入</h3><p>LangChain 提供了两个通用入口，<code>from_texts</code> 和 <code>from_documents</code>。因为向量库存的是向量，所以<strong>必须把嵌入模型传进去</strong>，让它把文本转成向量：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">import</span> dotenv</span><br><span class="line"><span class="keyword">from</span> langchain_community.vectorstores <span class="keyword">import</span> FAISS</span><br><span class="line"><span class="keyword">from</span> langchain_openai <span class="keyword">import</span> OpenAIEmbeddings</span><br><span class="line"></span><br><span class="line">dotenv.load_dotenv()</span><br><span class="line"></span><br><span class="line">embedding = OpenAIEmbeddings(model=<span class="string">&quot;text-embedding-3-small&quot;</span>)</span><br><span class="line"></span><br><span class="line">db = FAISS.from_texts([</span><br><span class="line">    <span class="string">&quot;笨笨是一只很喜欢睡觉的猫咪&quot;</span>,</span><br><span class="line">    <span class="string">&quot;我喜欢在夜晚听音乐，这让我感到放松。&quot;</span>,</span><br><span class="line">    <span class="string">&quot;猫咪在窗台上打盹，看起来非常可爱。&quot;</span>,</span><br><span class="line">    <span class="comment"># ...</span></span><br><span class="line">], embedding)</span><br><span class="line"></span><br><span class="line"><span class="built_in">print</span>(db.index.ntotal)      <span class="comment"># 库里现在有多少条向量</span></span><br></pre></td></tr></table></figure>
+
+<p><code>db.index.ntotal</code> 是 Faiss 自己的属性——<code>index</code> 就是那个底层的 Faiss 索引对象。从 LangChain 的封装里伸手拿到它，后面删除和计数都会用到。</p>
+<p>核心流程就一步：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">文本 → Embedding → 向量 → FAISS Index</span><br></pre></td></tr></table></figure>
+
+<h3 id="检索"><a href="#检索" class="headerlink" title="检索"></a>检索</h3><figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="built_in">print</span>(db.similarity_search(<span class="string">&quot;我养了一只猫，叫笨笨&quot;</span>))</span><br></pre></td></tr></table></figure>
+
+<h2 id="4-相关性评分：那个-√2-是怎么来的"><a href="#4-相关性评分：那个-√2-是怎么来的" class="headerlink" title="4. 相关性评分：那个 √2 是怎么来的"></a>4. 相关性评分：那个 √2 是怎么来的</h2><p>这一节值得慢慢看，因为「<strong>莫名其妙的计算结果</strong>」基本都是在这里出的。</p>
+<p>LangChain 有两个看起来很像的检索方法，返回的东西完全不同：</p>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>返回</th>
+<th>分数的含义</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>similarity_search_with_score</code></td>
+<td>原始<strong>距离</strong></td>
+<td><strong>越小越相关</strong></td>
+</tr>
+<tr>
+<td><code>similarity_search_with_relevance_scores</code></td>
+<td><strong>相关性分数</strong></td>
+<td><strong>越大越相关</strong></td>
+</tr>
+</tbody></table>
+<p>第二个方法向你承诺的是一个「分数」，也就意味着它内部做了一次转换。<strong>而转换函数取决于两件事：用的哪种距离度量，以及向量有没有归一化。</strong></p>
+<p>LangChain 内置了三种（欧氏 &#x2F; 余弦 &#x2F; 内积），按距离策略自动挑。欧氏那个是：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">@staticmethod</span></span><br><span class="line"><span class="keyword">def</span> <span class="title function_">_euclidean_relevance_score_fn</span>(<span class="params">distance: <span class="built_in">float</span></span>) -&gt; <span class="built_in">float</span>:</span><br><span class="line">    <span class="string">&quot;&quot;&quot;Return a similarity score on a scale [0, 1].&quot;&quot;&quot;</span></span><br><span class="line">    <span class="keyword">return</span> <span class="number">1.0</span> - distance / math.sqrt(<span class="number">2</span>)</span><br></pre></td></tr></table></figure>
+
+<p><strong>为什么除的是 √2？</strong> 因为它假设<strong>向量是单位长度（归一化过）的</strong>。归一化之后，L2 距离和余弦相似度之间有一个固定的换算关系：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">distance = √(2 − 2·cos)</span><br></pre></td></tr></table></figure>
+
+<p>代进去看边界：</p>
+<table>
+<thead>
+<tr>
+<th>两个向量</th>
+<th>cos</th>
+<th>distance</th>
+<th>分数</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>完全一样</td>
+<td>1</td>
+<td>0</td>
+<td><strong>1.0</strong></td>
+</tr>
+<tr>
+<td>毫不相关</td>
+<td>0</td>
+<td>√2</td>
+<td><strong>0.0</strong></td>
+</tr>
+<tr>
+<td>完全相反</td>
+<td>−1</td>
+<td>2</td>
+<td><strong>负数</strong></td>
+</tr>
+</tbody></table>
+<p><strong>所以 √2 就是「归一化向量在欧氏距离下的最大值」。</strong> 除掉它，刚好把 [0, √2] 映射到 [0, 1]——<strong>这就是它为什么可以叫「相关性分数」，而不只是一个距离。</strong></p>
+<p>这一切成立的前提是<strong>向量归一化了</strong>。OpenAI 的 embedding 是单位长度的，所以对得上。<strong>如果换一个不归一化的 embedding 模型，这个除 √2 就没有意义</strong>——你会拿到负数，或者大于 1 的分。</p>
+<h3 id="笔记里那个-1-1-d-是另一种走法"><a href="#笔记里那个-1-1-d-是另一种走法" class="headerlink" title="笔记里那个 1&#x2F;(1+d) 是另一种走法"></a>笔记里那个 1&#x2F;(1+d) 是另一种走法</h3><figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">relevance_score_fn=<span class="keyword">lambda</span> distance: <span class="number">1.0</span> / (<span class="number">1.0</span> + distance)</span><br></pre></td></tr></table></figure>
+
+<p>它跟 <code>1 − d/√2</code> 的区别在于：<strong>它不需要知道距离的上界。</strong> <code>d ≥ 0</code>，所以分数永远落在 (0, 1]，单调递减，不会为负。</p>
+<p>笔记里那句直觉是对的——「在 N 维向量空间下，两个点最大距离会随着维数变化」。<strong>N 维空间里 L2 距离没有固定上界</strong>（距离随维数增长，这就是维数灾难的一个侧面），所以你不能简单地写 <code>1 − d / 最大距离</code>，因为那个「最大距离」事先算不出来。</p>
+<p>两条路其实在解决同一件事，只是解法不同：</p>
+<ul>
+<li><strong><code>1 − d/√2</code> 靠「假设归一化」把上界消掉了</strong> —— 归一化之后最大值就是 √2</li>
+<li><strong><code>1/(1+d)</code> 靠「用一个有界函数」把上界绕过去了</strong> —— 反正函数本身压在 (0, 1]</li>
+</ul>
+<p><strong>但两者的刻度是不一样的。</strong> <code>1/(1+d)</code> 排序是对的、范围是安全的，可它不等于余弦相似度，它只是另一个刻度。</p>
+<h3 id="那个「Important」警告，实例化一下"><a href="#那个「Important」警告，实例化一下" class="headerlink" title="那个「Important」警告，实例化一下"></a>那个「Important」警告，实例化一下</h3><p>笔记里提醒：<strong>「一定要注意测试和校验文本嵌入模型生成向量的数值范围，避免出现明显错误」</strong>，以及 LangChain 封装了大量第三方组件、可能没针对每种情况测过。</p>
+<p>这不是空话，有一个可以直接拿来讲的真实案例：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">LangChain 0.3 之前    similarity_search_with_relevance_scores 返回原始距离</span><br><span class="line">                      → 越小越相关，范围约 [0, 2]</span><br><span class="line"></span><br><span class="line">LangChain 0.3 之后    改成 1 − d/√2</span><br><span class="line">                      → 越大越相关，最高就是 1.0</span><br></pre></td></tr></table></figure>
+
+<p><strong>于是：按旧版调的 <code>SCORE_THRESHOLD = 2.0</code>，升级之后一条都检索不出来。</strong> 因为新分数最高才 1.0，永远到不了 2.0——它不会报错，只会返回空结果，附带一句「没有文档达到阈值」。</p>
+<p><strong>这就是「莫名其妙的计算结果」长什么样。</strong></p>
+<p>所以那句提醒应该再往前走一步：</p>
+<blockquote>
+<p><strong>把评分函数和阈值绑在一起测，别分开调。</strong></p>
+</blockquote>
+<p>抄来的阈值（比如 0.7）换一个评分函数、换一个 embedding 模型、甚至换一个 LangChain 版本，含义就变了。<strong>分数能用来排序，但不能跨配置比较。</strong></p>
+<h2 id="5-带过滤的检索：Faiss-要变通，Pinecone-原生"><a href="#5-带过滤的检索：Faiss-要变通，Pinecone-原生" class="headerlink" title="5. 带过滤的检索：Faiss 要变通，Pinecone 原生"></a>5. 带过滤的检索：Faiss 要变通，Pinecone 原生</h2><h3 id="元数据"><a href="#元数据" class="headerlink" title="元数据"></a>元数据</h3><p>大部分向量数据库除了存向量，还能存对应的<strong>元数据</strong>：原文、扩展信息、页码、归属文档 ID、作者、创建时间……所以一条记录是：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">记录 = 向量(vector) + 元数据(metadata) + id</span><br></pre></td></tr></table></figure>
+
+<p>召回之后过滤（按文档、按时间、按权限）靠的就是它。</p>
+<h3 id="Faiss：先多取，再筛"><a href="#Faiss：先多取，再筛" class="headerlink" title="Faiss：先多取，再筛"></a>Faiss：先多取，再筛</h3><p><strong>Faiss 原生并不支持过滤</strong>——§1 说过原因，它只存向量。所以 LangChain 的封装在外面补了一层：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">先取 fetch_k 个结果（默认 20）</span><br><span class="line">        ↓</span><br><span class="line">按 metadata 过滤</span><br><span class="line">        ↓</span><br><span class="line">取 k 条结果</span><br></pre></td></tr></table></figure>
+
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line">db = FAISS.from_texts(</span><br><span class="line">    texts,</span><br><span class="line">    embedding,</span><br><span class="line">    metadatas,</span><br><span class="line">    relevance_score_fn=<span class="keyword">lambda</span> distance: <span class="number">1.0</span> / (<span class="number">1.0</span> + distance),</span><br><span class="line">)</span><br><span class="line"></span><br><span class="line"><span class="built_in">print</span>(</span><br><span class="line">    db.similarity_search_with_relevance_scores(</span><br><span class="line">        query=<span class="string">&quot;我养了一只猫，叫笨笨&quot;</span>,</span><br><span class="line">        <span class="built_in">filter</span>=<span class="keyword">lambda</span> x: x[<span class="string">&quot;page&quot;</span>] &gt; <span class="number">5</span></span><br><span class="line">    )</span><br><span class="line">)</span><br></pre></td></tr></table></figure>
+
+<p><code>filter</code> 可以传两种东西：<strong>元数据字典</strong>，或者<strong>函数</strong>——函数的参数是 metadata 字典，返回布尔值。</p>
+<p><strong>但这里有个语义陷阱，比代码本身重要得多。</strong></p>
+<p><code>filter</code> <strong>只作用于已经召回的 fetch_k 条，不是在全库上筛。</strong></p>
+<p>也就是说，上面这段的语义不是「在所有 page &gt; 5 的文档里检索」，而是：</p>
+<blockquote>
+<p><strong>先检索出 20 条，再从这 20 条里挑出 page &gt; 5 的。</strong></p>
+</blockquote>
+<p><strong>如果 page &gt; 5 的文档在库里占比很低，这 20 条里可能一条都不满足，你会拿到空结果</strong>——而全库里明明有大量符合条件的数据。</p>
+<p>推论：<strong>用 Faiss 做过滤时，<code>fetch_k</code> 要按筛选比例放大。</strong> 你觉得符合条件的大概占 10%，那 fetch_k 至少得是 k 的十倍——还不够保险，所以更要紧的是<strong>先测一遍「筛完之后还剩几条」</strong>。</p>
+<p>这是「库 vs 数据库」那个差别最实际的后果：在 Pinecone 里过滤是一等公民，在 Faiss 里它是事后补救。</p>
+<h3 id="Pinecone：原生支持"><a href="#Pinecone：原生支持" class="headerlink" title="Pinecone：原生支持"></a>Pinecone：原生支持</h3><p>Pinecone 的过滤器就是一个 JSON：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">resp = db.similarity_search_with_relevance_scores(</span><br><span class="line">    <span class="string">&quot;我养了一只猫，叫笨笨&quot;</span>,</span><br><span class="line">    <span class="built_in">filter</span>=&#123;<span class="string">&quot;page&quot;</span>: &#123;<span class="string">&quot;$lte&quot;</span>: <span class="number">5</span>&#125;&#125;      <span class="comment"># less than or equal，小于等于 5</span></span><br><span class="line">)</span><br></pre></td></tr></table></figure>
+
+<p>比较操作符：<code>$eq</code> <code>$ne</code> <code>$gt</code> <code>$gte</code> <code>$lt</code> <code>$lte</code> <code>$in</code> <code>$nin</code> <code>$exists</code>，逻辑操作符 <code>$and</code> <code>$or</code> <code>$not</code>，可以嵌套。</p>
+<p>几条容易踩的规则：</p>
+<ul>
+<li><strong>顶层只能放字段名或逻辑操作符。</strong> 多个字段默认隐式 AND；但你不能把一个裸的 <code>$gt</code> 放在顶层，它必须藏在字段下面</li>
+<li><strong>类型严格。</strong> 字符串 <code>&quot;2024&quot;</code> <strong>不匹配</strong>数字 <code>2024</code></li>
+<li><strong><code>$in</code> &#x2F; <code>$nin</code> 最多 10000 个值</strong>，超了直接失败</li>
+<li><strong>否定查询更慢。</strong> <code>$ne</code>、<code>$nin</code> 这种「排除法」比正向查询代价高——尽量用正向条件表达</li>
+</ul>
+<figure class="highlight json"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="punctuation">&#123;</span><span class="attr">&quot;genre&quot;</span><span class="punctuation">:</span> <span class="string">&quot;action&quot;</span><span class="punctuation">,</span> <span class="attr">&quot;year&quot;</span><span class="punctuation">:</span> <span class="number">2020</span><span class="punctuation">,</span> <span class="attr">&quot;length_hrs&quot;</span><span class="punctuation">:</span> <span class="number">1.5</span><span class="punctuation">&#125;</span></span><br></pre></td></tr></table></figure>
+
+<figure class="highlight json"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="punctuation">&#123;</span><span class="attr">&quot;color&quot;</span><span class="punctuation">:</span> <span class="string">&quot;blue&quot;</span><span class="punctuation">,</span> <span class="attr">&quot;price&quot;</span><span class="punctuation">:</span> <span class="number">29.99</span><span class="punctuation">,</span> <span class="attr">&quot;is_jeans&quot;</span><span class="punctuation">:</span> <span class="literal"><span class="keyword">true</span></span><span class="punctuation">&#125;</span></span><br></pre></td></tr></table></figure>
+
+<h2 id="6-Pinecone：托管数据库长什么样"><a href="#6-Pinecone：托管数据库长什么样" class="headerlink" title="6. Pinecone：托管数据库长什么样"></a>6. Pinecone：托管数据库长什么样</h2><p>Pinecone 是托管的云原生向量数据库，<strong>极简的 API，不用本地部署</strong>，每个账户还有一定免费额度，开发阶段可以直接上手。</p>
+<p>它和 Faiss 的架构差别很大，层级是：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line">Organization</span><br><span class="line">    ↓</span><br><span class="line">Project</span><br><span class="line">    ↓</span><br><span class="line">Index</span><br><span class="line">    ↓</span><br><span class="line">Namespace</span><br><span class="line">    ↓</span><br><span class="line">Record</span><br></pre></td></tr></table></figure>
+
+<p><strong>Namespace 是这里最值得理解的一层</strong>——一个 Index 下可以挂多个：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">Index1</span><br><span class="line"> ├─ Namespace1      Record1 / Record2 / Record3</span><br><span class="line"> ├─ Namespace2      Record1 / Record2 / Record3</span><br><span class="line"> └─ Namespace3      Record1 / Record2 / Record3</span><br></pre></td></tr></table></figure>
+
+<p><strong>它提供的是逻辑隔离</strong>：不同数据集、不同租户、不同环境的向量放不同 namespace，检索时指定一个就行，互不干扰。<strong>相比开多个 Index，namespace 成本低得多</strong>（Index 是重资源）。</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">from</span> langchain_pinecone <span class="keyword">import</span> PineconeVectorStore</span><br><span class="line"></span><br><span class="line">db = PineconeVectorStore(</span><br><span class="line">    index_name=<span class="string">&quot;llmops&quot;</span>,</span><br><span class="line">    embedding=embedding,</span><br><span class="line">    namespace=<span class="string">&quot;dataset&quot;</span>,</span><br><span class="line">)</span><br><span class="line"></span><br><span class="line">db.add_texts(texts, metadatas, namespace=<span class="string">&quot;dataset&quot;</span>)</span><br><span class="line"></span><br><span class="line"><span class="built_in">print</span>(db.similarity_search_with_relevance_scores(<span class="string">&quot;我养了一只猫，叫笨笨&quot;</span>))</span><br></pre></td></tr></table></figure>
+
+<p>注意 API 的形状和 Faiss 不一样：<strong>Faiss 是 <code>from_texts</code> 建库，Pinecone 是先连上一个已经存在的 Index，再 <code>add_texts</code> 往里写。</strong> 因为一个是本地对象，一个是远端资源——又是「库 vs 数据库」的差别。</p>
+<h2 id="7-删除和持久化"><a href="#7-删除和持久化" class="headerlink" title="7. 删除和持久化"></a>7. 删除和持久化</h2><h3 id="删除：只能按-id"><a href="#删除：只能按-id" class="headerlink" title="删除：只能按 id"></a>删除：只能按 id</h3><p><strong>Faiss 目前只支持传 id 删除，不支持条件筛选。</strong> 想按条件删：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">条件搜索 → 找到符合条件的数据 → 拿到 ID → 按 ID 删除</span><br></pre></td></tr></table></figure>
+
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="built_in">print</span>(<span class="string">&quot;删除前数量:&quot;</span>, db.index.ntotal)</span><br><span class="line"></span><br><span class="line"><span class="comment"># 获取向量数据库的索引 id</span></span><br><span class="line">db.delete([db.index_to_docstore_id[<span class="number">0</span>]])</span><br><span class="line"></span><br><span class="line"><span class="built_in">print</span>(<span class="string">&quot;删除后数量:&quot;</span>, db.index.ntotal)</span><br></pre></td></tr></table></figure>
+
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">删除前数量：10</span><br><span class="line">删除后数量：9</span><br></pre></td></tr></table></figure>
+
+<p><code>index_to_docstore_id</code> 是一张映射表，把 <strong>Faiss 内部的向量 id</strong> 对应到 <strong>LangChain docstore 里的文档 id</strong>。<code>delete()</code> 要的是后者，所以你得从这张表里取。</p>
+<p><strong>为什么不支持条件删除？</strong> 还是那个原因——条件在元数据上，而 Faiss 不知道元数据。<strong>条件筛选这件事，库里没有。</strong></p>
+<h3 id="持久化：save-local-load-local"><a href="#持久化：save-local-load-local" class="headerlink" title="持久化：save_local &#x2F; load_local"></a>持久化：save_local &#x2F; load_local</h3><p>Faiss 是本地文件向量数据库，整个库可以落到本地，也能从本地加载，<strong>省掉每次重新建库</strong>：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">db.save_local(<span class="string">&quot;faiss_index&quot;</span>)</span><br></pre></td></tr></table></figure>
+
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line">new_db = FAISS.load_local(</span><br><span class="line">    <span class="string">&quot;faiss_index&quot;</span>,</span><br><span class="line">    embeddings,</span><br><span class="line">    allow_dangerous_deserialization=<span class="literal">True</span>,</span><br><span class="line">)</span><br><span class="line"></span><br><span class="line">docs = new_db.similarity_search(<span class="string">&quot;我养了一只猫，叫笨笨&quot;</span>)</span><br></pre></td></tr></table></figure>
+
+<p><strong>那个 <code>allow_dangerous_deserialization=True</code> 不是可选装饰。</strong> 新版本 LangChain 默认是 <code>False</code>，不加这个参数会直接报错。</p>
+<p>原因是 <code>load_local</code> 读的是 pickle 文件，而 <strong>pickle 反序列化可以执行任意代码</strong>——一个被替换过的 <code>index.pkl</code> 就是一个可执行的恶意载荷。LangChain 让你显式写这一行，是为了让「我知道我在加载自己建的索引」变成一个需要你点头的决定。</p>
+<p><strong>所以：只对你自己生成、且没被别人碰过的索引开这个开关。</strong> 用户上传的、网上下的索引文件，不要开。</p>
+<p>搜索结果的形状是这样的：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">笨笨是一只很喜欢睡觉的猫咪</span><br><span class="line">猫咪在窗台上打盹，看起来非常可爱</span><br><span class="line">我的狗喜欢追逐球，看起来非常开心</span><br><span class="line">我的手机突然关机了，让我有些焦虑</span><br></pre></td></tr></table></figure>
+
+<p>——注意最后两条。向量检索<strong>总能返回 k 条结果</strong>，哪怕库里根本没有相关的。它找的是「最近的邻居」，不是「相关的文档」。</p>
+<p><strong>这个特性在 Faiss 里没办法关掉</strong>（Faiss 不知道元数据，也就没有阈值可用）。后端拼上「是否真的相关」这一步，得靠评分阈值或者 reranker——这就是 <a href="/agent/rag/">RAG</a> §5 讲的精排。</p>
+<h2 id="8-小结"><a href="#8-小结" class="headerlink" title="8. 小结"></a>8. 小结</h2><p><strong>一、Faiss 是「库」，不是「数据库」。</strong> 它只有向量和 id，没有元数据、没有服务、没有命名空间。这一条推导出了后面几乎所有差异：为什么它原生不支持过滤、为什么过滤要 fetch_k 再筛、为什么删除只能按 id。<strong>Annoy 也是库</strong>，把它归到「本地部署 API 向量数据库」是分类放错了。</p>
+<p><strong>二、上游的划分是「本地文件 &#x2F; 本地部署 API &#x2F; 云端托管」，但边界在变模糊。</strong> 选型时真正该问的是：这个数据量下，我需要的是一个进程内的库，还是一个要运维的数据库？<strong>如果你的数据本来就在 PostgreSQL 里，pgvector 往往比引入一个新数据库划算。</strong></p>
+<p><strong>三、几乎所有的都不支持修改数据，只会「删除后重新新增」。</strong> 因为在 HNSW &#x2F; IVF 这类 ANN 索引里，插入一个点很便宜，改一个点约等于重建一小片索引。这也是为什么大多数向量数据库没有多语句事务。</p>
+<p><strong>四、<code>similarity_search_with_relevance_scores</code> 的分数是换算出来的，换算公式取决于距离度量和是否归一化。</strong> LangChain 欧氏那个默认是 <code>1 − d/√2</code>，<strong>√2 来自「归一化向量在欧氏距离下的最大值」</strong>（因为 <code>d = √(2−2cos)</code>）。不归一化的 embedding 会让它算出负数或者超过 1 的分。</p>
+<p><strong>五、那个 1&#x2F;(1+d) 是另一种刻度，不是同一个分。</strong> 它靠有界函数绕过了「N 维空间距离没有上界」的问题，排序对、范围安全，但跟余弦相似度不是一个刻度。</p>
+<p><strong>六、评分函数和阈值必须绑在一起测。</strong> LangChain 0.3 把返回从「原始距离」改成「1 − d&#x2F;√2」，方向反了、量纲也变了——按旧版调的阈值升级后一条都检索不回来，<strong>不报错，只返回空</strong>。这就是笔记里那句「会出现莫名其妙的计算结果」的真实长相。</p>
+<p><strong>七、过滤在 Faiss 上是事后补救，在 Pinecone 上是原生的。</strong> Faiss 的 <code>filter</code> 只作用于已召回的 <code>fetch_k</code> 条，所以 <strong><code>fetch_k</code> 要按筛选比例放大</strong>，否则你会拿到「全库明明有数据、却筛出空」的结果。Pinecone 的过滤是 JSON、支持 <code>$lte</code> 这类操作符，但要记住顶层只能放字段名或逻辑操作符、类型严格、否定查询更慢。</p>
+<p><strong>八、<code>load_local</code> 要显式开 <code>allow_dangerous_deserialization=True</code>。</strong> pickle 能执行任意代码，只对你自己建的索引开。<strong>另外向量检索总能返回 k 条——它找的是最近的邻居，不是相关的文档。</strong></p>
+<p>最后，这一串串起来就是 RAG 里的那段：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line">Chunk</span><br><span class="line"> ↓</span><br><span class="line">Embedding</span><br><span class="line"> ↓</span><br><span class="line">FAISS / Pinecone</span><br><span class="line"> ↓</span><br><span class="line">Query Embedding</span><br><span class="line"> ↓</span><br><span class="line">相似度检索</span><br><span class="line"> ↓</span><br><span class="line">TopK 文档</span><br><span class="line"> ↓</span><br><span class="line">LLM</span><br></pre></td></tr></table></figure>
+
+<h2 id="参考"><a href="#参考" class="headerlink" title="参考"></a>参考</h2><ul>
+<li>Faiss 官方仓库：<a target="_blank" rel="noopener" href="https://github.com/facebookresearch/faiss">https://github.com/facebookresearch/faiss</a></li>
+<li>Pinecone 元数据过滤文档：<a target="_blank" rel="noopener" href="https://docs.pinecone.io/guides/search/filter-by-metadata">https://docs.pinecone.io/guides/search/filter-by-metadata</a></li>
+<li>LangChain FAISS 源码：<a target="_blank" rel="noopener" href="https://github.com/langchain-ai/langchain/tree/master/libs/community/langchain_community/vectorstores">https://github.com/langchain-ai/langchain/tree/master/libs/community/langchain_community/vectorstores</a></li>
+<li>上一篇：RAG 检索增强生成 —— <a href="https://wywzixin.github.io/agent/rag/">https://wywzixin.github.io/agent/rag/</a></li>
+<li>Agent 记忆系统 —— <a href="https://wywzixin.github.io/agent/memory-system/">https://wywzixin.github.io/agent/memory-system/</a></li>
+<li>上下文压缩与 Token 管理 —— <a href="https://wywzixin.github.io/agent/context-compaction/">https://wywzixin.github.io/agent/context-compaction/</a></li>
+<li>Function Calling介绍 —— <a href="https://wywzixin.github.io/agent/function-calling/">https://wywzixin.github.io/agent/function-calling/</a></li>
+<li>MCP 协议与工具接入 —— <a href="https://wywzixin.github.io/agent/mcp-protocol/">https://wywzixin.github.io/agent/mcp-protocol/</a></li>
+<li>ReAct 与 Agent Loop —— <a href="https://wywzixin.github.io/agent/react-agent-loop/">https://wywzixin.github.io/agent/react-agent-loop/</a></li>
+<li>LLM 请求与流式响应 —— <a href="https://wywzixin.github.io/agent/llm-request-streaming/">https://wywzixin.github.io/agent/llm-request-streaming/</a></li>
+</ul>
+</div><div class="article-licensing box"><div class="licensing-title"><p>向量数据库：FAISS 与 Pinecone</p><p><a href="https://wywzixin.github.io/agent/vector-database/">https://wywzixin.github.io/agent/vector-database/</a></p></div><div class="licensing-meta level is-mobile"><div class="level-left"><div class="level-item is-narrow"><div><h6>作者</h6><p>wangyawei</p></div></div><div class="level-item is-narrow"><div><h6>发布于</h6><p>2026-09-15</p></div></div><div class="level-item is-narrow"><div><h6>更新于</h6><p>2026-09-15</p></div></div><div class="level-item is-narrow"><div><h6>许可协议</h6><p><a class="icons" rel="noopener" target="_blank" title="Creative Commons" href="https://creativecommons.org/"><i class="icon fab fa-creative-commons"></i></a><a class="icons" rel="noopener" target="_blank" title="Attribution" href="https://creativecommons.org/licenses/by/4.0/"><i class="icon fab fa-creative-commons-by"></i></a><a class="icons" rel="noopener" target="_blank" title="Noncommercial" href="https://creativecommons.org/licenses/by-nc/4.0/"><i class="icon fab fa-creative-commons-nc"></i></a></p></div></div></div></div></div><div class="article-tags is-size-7 mb-4"><span class="mr-2">#</span><a class="link-muted mr-2" rel="tag" href="/tags/agent/">agent</a><a class="link-muted mr-2" rel="tag" href="/tags/%E5%90%91%E9%87%8F%E6%95%B0%E6%8D%AE%E5%BA%93/">向量数据库</a><a class="link-muted mr-2" rel="tag" href="/tags/FAISS/">FAISS</a><a class="link-muted mr-2" rel="tag" href="/tags/Pinecone/">Pinecone</a><a class="link-muted mr-2" rel="tag" href="/tags/LangChain/">LangChain</a></div><!--!--></article></div><!--!--><nav class="post-navigation mt-4 level is-mobile"><div class="level-start"><a class="article-nav-prev level level-item link-muted" href="/agent/rag/"><i class="level-item fas fa-chevron-left"></i><span class="level-item">RAG 检索增强生成</span></a></div><div class="level-end"><a class="article-nav-next level level-item link-muted" href="/llm/transformer/"><span class="level-item">Transformer 原理</span><i class="level-item fas fa-chevron-right"></i></a></div></nav><!--!--></div><div class="column column-left is-4-tablet is-4-desktop is-3-widescreen  order-1"><div class="card widget" data-type="profile"><div class="card-content"><nav class="level"><div class="level-item has-text-centered flex-shrink-1"><div><figure class="image is-128x128 mx-auto mb-2"><img class="avatar is-rounded" src="/img/avatar.svg" alt="王亚伟"></figure><p class="title is-size-4 is-block" style="line-height:inherit;">王亚伟</p><p class="is-size-6 is-block">3D · AI</p><p class="is-size-6 is-flex justify-content-center"><i class="fas fa-map-marker-alt mr-1"></i><span>北京</span></p></div></div></nav><nav class="level is-mobile"><div class="level-item has-text-centered is-marginless"><div><p class="heading">文章</p><a href="/archives/"><p class="title">55</p></a></div></div><div class="level-item has-text-centered is-marginless"><div><p class="heading">分类</p><a href="/categories/"><p class="title">9</p></a></div></div><div class="level-item has-text-centered is-marginless"><div><p class="heading">标签</p><a href="/tags/"><p class="title">64</p></a></div></div></nav><div class="level"><a class="level-item button is-primary is-rounded" href="https://github.com/wywzixin" target="_blank" rel="me noopener">关注我</a></div><div class="level is-mobile is-multiline"><a class="level-item button is-transparent is-marginless" target="_blank" rel="me noopener" title="Github" href="https://github.com/wywzixin"><i class="fab fa-github"></i></a><a class="level-item button is-transparent is-marginless" target="_blank" rel="me noopener" title="Facebook" href="https://facebook.com"><i class="fab fa-facebook"></i></a><a class="level-item button is-transparent is-marginless" target="_blank" rel="me noopener" title="Twitter" href="https://twitter.com"><i class="fab fa-twitter"></i></a><a class="level-item button is-transparent is-marginless" target="_blank" rel="me noopener" title="Dribbble" href="https://dribbble.com"><i class="fab fa-dribbble"></i></a><a class="level-item button is-transparent is-marginless" target="_blank" rel="me noopener" title="RSS" href="/"><i class="fas fa-rss"></i></a></div></div></div><!--!--><div class="card widget" data-type="categories"><div class="card-content"><div class="menu"><h3 class="menu-label">分类</h3><ul class="menu-list"><li><a class="level is-mobile" href="/categories/cesium/"><span class="level-start"><span class="level-item">cesium</span></span><span class="level-end"><span class="level-item tag">24</span></span></a></li><li><a class="level is-mobile" href="/categories/threejs/"><span class="level-start"><span class="level-item">threejs</span></span><span class="level-end"><span class="level-item tag">6</span></span></a></li><li><a class="level is-mobile" href="/categories/%E5%8C%97%E6%96%97%E7%BD%91%E6%A0%BC%E6%80%A7%E8%83%BD%E4%BC%98%E5%8C%96/"><span class="level-start"><span class="level-item">北斗网格性能优化</span></span><span class="level-end"><span class="level-item tag">7</span></span></a></li><li><a class="level is-mobile" href="/categories/%E5%9B%BE%E5%BD%A2%E5%AD%A6/"><span class="level-start"><span class="level-item">图形学</span></span><span class="level-end"><span class="level-item tag">1</span></span></a></li><li><a class="level is-mobile" href="/categories/vue/"><span class="level-start"><span class="level-item">vue</span></span><span class="level-end"><span class="level-item tag">2</span></span></a></li><li><a class="level is-mobile" href="/categories/agent/"><span class="level-start"><span class="level-item">agent</span></span><span class="level-end"><span class="level-item tag">8</span></span></a></li><li><a class="level is-mobile" href="/categories/claude-code/"><span class="level-start"><span class="level-item">claude code</span></span><span class="level-end"><span class="level-item tag">2</span></span></a></li><li><a class="level is-mobile" href="/categories/python/"><span class="level-start"><span class="level-item">python</span></span><span class="level-end"><span class="level-item tag">3</span></span></a></li><li><a class="level is-mobile" href="/categories/%E5%A4%A7%E6%A8%A1%E5%9E%8B/"><span class="level-start"><span class="level-item">大模型</span></span><span class="level-end"><span class="level-item tag">2</span></span></a></li></ul></div></div></div><div class="card widget" data-type="tags"><div class="card-content"><div class="menu"><h3 class="menu-label">标签</h3><div class="field is-grouped is-grouped-multiline"><div class="control"><a class="tags has-addons" href="/tags/Agent-Loop/"><span class="tag">Agent Loop</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/Cesium/"><span class="tag">Cesium</span><span class="tag">7</span></a></div><div class="control"><a class="tags has-addons" href="/tags/DrawCommand/"><span class="tag">DrawCommand</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/ENU/"><span class="tag">ENU</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/Embedding/"><span class="tag">Embedding</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/FAISS/"><span class="tag">FAISS</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/Function-Calling/"><span class="tag">Function Calling</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/GPT-3/"><span class="tag">GPT-3</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/GPU-Instancing/"><span class="tag">GPU Instancing</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/L6/"><span class="tag">L6</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/L7/"><span class="tag">L7</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/LLM/"><span class="tag">LLM</span><span class="tag">2</span></a></div><div class="control"><a class="tags has-addons" href="/tags/LOD/"><span class="tag">LOD</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/LRU/"><span class="tag">LRU</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/LangChain/"><span class="tag">LangChain</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/MCP/"><span class="tag">MCP</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/PBR/"><span class="tag">PBR</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/Pinecone/"><span class="tag">Pinecone</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/RAG/"><span class="tag">RAG</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/RTE/"><span class="tag">RTE</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/ReAct/"><span class="tag">ReAct</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/SSE/"><span class="tag">SSE</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/Shader/"><span class="tag">Shader</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/Token/"><span class="tag">Token</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/Transferable/"><span class="tag">Transferable</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/Transformer/"><span class="tag">Transformer</span><span class="tag">2</span></a></div><div class="control"><a class="tags has-addons" href="/tags/Web-Worker/"><span class="tag">Web Worker</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/WebGL/"><span class="tag">WebGL</span><span class="tag">2</span></a></div><div class="control"><a class="tags has-addons" href="/tags/agent/"><span class="tag">agent</span><span class="tag">8</span></a></div><div class="control"><a class="tags has-addons" href="/tags/asyncio/"><span class="tag">asyncio</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/cesium/"><span class="tag">cesium</span><span class="tag">24</span></a></div><div class="control"><a class="tags has-addons" href="/tags/claude-code/"><span class="tag">claude code</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/markstream/"><span class="tag">markstream</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/prompt-cache/"><span class="tag">prompt cache</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/python/"><span class="tag">python</span><span class="tag">3</span></a></div><div class="control"><a class="tags has-addons" href="/tags/threejs/"><span class="tag">threejs</span><span class="tag">6</span></a></div><div class="control"><a class="tags has-addons" href="/tags/vue/"><span class="tag">vue</span><span class="tag">2</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E4%B8%8A%E4%B8%8B%E6%96%87%E5%8E%8B%E7%BC%A9/"><span class="tag">上下文压缩</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E4%B8%8A%E4%B8%8B%E6%96%87%E5%B7%A5%E7%A8%8B/"><span class="tag">上下文工程</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E5%86%85%E5%AD%98%E7%AE%A1%E7%90%86/"><span class="tag">内存管理</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E5%8C%97%E6%96%97%E7%BD%91%E6%A0%BC/"><span class="tag">北斗网格</span><span class="tag">7</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E5%8F%82%E6%95%B0%E9%87%8F/"><span class="tag">参数量</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E5%90%8E%E5%A4%84%E7%90%86/"><span class="tag">后处理</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E5%90%91%E9%87%8F%E6%95%B0%E6%8D%AE%E5%BA%93/"><span class="tag">向量数据库</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E5%93%8D%E5%BA%94%E5%BC%8F%E5%8E%9F%E7%90%86/"><span class="tag">响应式原理</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E5%9B%BE%E5%BD%A2%E5%AD%A6/"><span class="tag">图形学</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E5%A4%9A%E5%A4%B4%E6%B3%A8%E6%84%8F%E5%8A%9B/"><span class="tag">多头注意力</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E5%A4%A7%E6%A8%A1%E5%9E%8B/"><span class="tag">大模型</span><span class="tag">2</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E5%B7%A5%E5%85%B7%E8%B0%83%E7%94%A8/"><span class="tag">工具调用</span><span class="tag">2</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E5%B9%B6%E5%8F%91/"><span class="tag">并发</span><span class="tag">2</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E6%9D%90%E8%B4%A8/"><span class="tag">材质</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E6%9E%B6%E6%9E%84%E8%AE%BE%E8%AE%A1/"><span class="tag">架构设计</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E6%A3%80%E7%B4%A2%E5%A2%9E%E5%BC%BA%E7%94%9F%E6%88%90/"><span class="tag">检索增强生成</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E6%B3%A8%E6%84%8F%E5%8A%9B%E6%9C%BA%E5%88%B6/"><span class="tag">注意力机制</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E6%B5%81%E5%BC%8F%E5%93%8D%E5%BA%94/"><span class="tag">流式响应</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E6%B5%81%E5%BC%8F%E6%B8%B2%E6%9F%93/"><span class="tag">流式渲染</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E7%A9%BA%E9%97%B4%E5%88%86%E5%9D%97/"><span class="tag">空间分块</span><span class="tag">2</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E7%BA%BF%E7%A8%8B%E6%B1%A0/"><span class="tag">线程池</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E7%BC%93%E5%AD%98/"><span class="tag">缓存</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E8%A7%86%E9%94%A5%E5%89%94%E9%99%A4/"><span class="tag">视锥剔除</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E8%AE%B0%E5%BF%86%E7%B3%BB%E7%BB%9F/"><span class="tag">记忆系统</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E8%BD%AE%E5%BB%93%E7%BA%BF/"><span class="tag">轮廓线</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E9%AB%98%E5%BA%A6%E5%88%87%E7%89%87/"><span class="tag">高度切片</span><span class="tag">1</span></a></div></div></div></div></div><div class="card widget" data-type="subscribe-email"><div class="card-content"><div class="menu"><h3 class="menu-label">订阅更新</h3><form action="https://feedburner.google.com/fb/a/mailverify" method="post" target="popupwindow" onsubmit="window.open(&#039;https://feedburner.google.com/fb/a/mailverify?uri=&#039;,&#039;popupwindow&#039;,&#039;scrollbars=yes,width=550,height=520&#039;);return true"><input type="hidden" value="" name="uri"><input type="hidden" name="loc" value="en_US"><div class="field has-addons"><div class="control has-icons-left is-expanded"><input class="input" name="email" type="email" placeholder="Email"><span class="icon is-small is-left"><i class="fas fa-envelope"></i></span></div><div class="control"><input class="button" type="submit" value="订阅"></div></div></form></div></div></div><div class="column-right-shadow is-hidden-widescreen"></div></div><div class="column column-right is-4-tablet is-4-desktop is-3-widescreen is-hidden-touch is-hidden-desktop-only order-3"><div class="card widget" data-type="recent-posts"><div class="card-content"><h3 class="menu-label">最新文章</h3><article class="media"><div class="media-content"><p class="date"><time dateTime="2026-09-15T00:00:00.000Z">2026-09-15</time></p><p class="title"><a href="/agent/llm-request-streaming/">LLM 请求与流式响应</a></p><p class="categories"><a href="/categories/agent/">agent</a></p></div></article><article class="media"><div class="media-content"><p class="date"><time dateTime="2026-09-14T23:00:00.000Z">2026-09-15</time></p><p class="title"><a href="/agent/react-agent-loop/">ReAct 与 Agent Loop</a></p><p class="categories"><a href="/categories/agent/">agent</a></p></div></article><article class="media"><div class="media-content"><p class="date"><time dateTime="2026-09-14T22:00:00.000Z">2026-09-15</time></p><p class="title"><a href="/agent/mcp-protocol/">MCP 协议与工具接入</a></p><p class="categories"><a href="/categories/agent/">agent</a></p></div></article><article class="media"><div class="media-content"><p class="date"><time dateTime="2026-09-14T21:00:00.000Z">2026-09-15</time></p><p class="title"><a href="/agent/function-calling/">Function Calling介绍</a></p><p class="categories"><a href="/categories/agent/">agent</a></p></div></article><article class="media"><div class="media-content"><p class="date"><time dateTime="2026-09-14T20:00:00.000Z">2026-09-15</time></p><p class="title"><a href="/agent/context-compaction/">上下文压缩与 Token 管理</a></p><p class="categories"><a href="/categories/agent/">agent</a></p></div></article></div></div><div class="card widget" data-type="archives"><div class="card-content"><div class="menu"><h3 class="menu-label">归档</h3><ul class="menu-list"><li><a class="level is-mobile" href="/archives/2026/09/"><span class="level-start"><span class="level-item">九月 2026</span></span><span class="level-end"><span class="level-item tag">25</span></span></a></li><li><a class="level is-mobile" href="/archives/2026/03/"><span class="level-start"><span class="level-item">三月 2026</span></span><span class="level-end"><span class="level-item tag">4</span></span></a></li><li><a class="level is-mobile" href="/archives/2025/03/"><span class="level-start"><span class="level-item">三月 2025</span></span><span class="level-end"><span class="level-item tag">25</span></span></a></li><li><a class="level is-mobile" href="/archives/2025/01/"><span class="level-start"><span class="level-item">一月 2025</span></span><span class="level-end"><span class="level-item tag">1</span></span></a></li></ul></div></div></div></div></div></div></section><footer class="footer"><div class="container"><div class="level"><div class="level-start"><a class="footer-logo is-block mb-2" href="/"><img src="/img/logo.svg" alt="Hexo" height="28"></a><p class="is-size-7"><span>&copy; 2026 wangyawei</span>  Powered by <a href="https://hexo.io/" target="_blank" rel="noopener">Hexo</a> &amp; <a href="https://github.com/ppoffice/hexo-theme-icarus" target="_blank" rel="noopener">Icarus</a></p><p class="is-size-7">© 2019</p></div><div class="level-end"><div class="field has-addons"><p class="control"><a class="button is-transparent is-large" target="_blank" rel="noopener" title="Creative Commons" href="https://creativecommons.org/"><i class="fab fa-creative-commons"></i></a></p><p class="control"><a class="button is-transparent is-large" target="_blank" rel="noopener" title="Attribution 4.0 International" href="https://creativecommons.org/licenses/by/4.0/"><i class="fab fa-creative-commons-by"></i></a></p><p class="control"><a class="button is-transparent is-large" target="_blank" rel="noopener" title="Download on GitHub" href="https://github.com/ppoffice/hexo-theme-icarus"><i class="fab fa-github"></i></a></p></div></div></div></div></footer><script src="https://cdn.jsdelivr.net/npm/jquery@3.3.1/dist/jquery.min.js"></script><script src="https://cdn.jsdelivr.net/npm/moment@2.22.2/min/moment-with-locales.min.js"></script><script src="https://cdn.jsdelivr.net/npm/clipboard@2.0.4/dist/clipboard.min.js" defer></script><script>moment.locale("zh-cn");</script><script>var IcarusThemeSettings = {
+            article: {
+                highlight: {
+                    clipboard: true,
+                    fold: 'unfolded'
+                }
+            }
+        };</script><script data-pjax src="/js/column.js"></script><a id="back-to-top" title="回到顶端" href="javascript:;"><i class="fas fa-chevron-up"></i></a><script data-pjax src="/js/back_to_top.js" defer></script><!--!--><!--!--><!--!--><script src="https://cdn.jsdelivr.net/npm/cookieconsent@3.1.1/build/cookieconsent.min.js" defer></script><script>window.addEventListener("load", () => {
+      window.cookieconsent.initialise({
+        type: "info",
+        theme: "edgeless",
+        static: false,
+        position: "bottom-left",
+        content: {
+          message: "此网站使用Cookie来改善您的体验。",
+          dismiss: "知道了！",
+          allow: "允许使用Cookie",
+          deny: "拒绝",
+          link: "了解更多",
+          policy: "Cookie政策",
+          href: "https://www.cookiesandyou.com/",
+        },
+        palette: {
+          popup: {
+            background: "#edeff5",
+            text: "#838391"
+          },
+          button: {
+            background: "#4b81e8"
+          },
+        },
+      });
+    });</script><script src="https://cdn.jsdelivr.net/npm/lightgallery@1.10.0/dist/js/lightgallery.min.js" defer></script><script src="https://cdn.jsdelivr.net/npm/justifiedGallery@3.8.1/dist/js/jquery.justifiedGallery.min.js" defer></script><script>window.addEventListener("load", () => {
+            if (typeof $.fn.lightGallery === 'function') {
+                $('.article').lightGallery({ selector: '.gallery-item' });
+            }
+            if (typeof $.fn.justifiedGallery === 'function') {
+                if ($('.justified-gallery > p > .gallery-item').length) {
+                    $('.justified-gallery > p > .gallery-item').unwrap();
+                }
+                $('.justified-gallery').justifiedGallery();
+            }
+        });</script><!--!--><!--!--><script src="https://cdn.jsdelivr.net/npm/pjax@0.2.8/pjax.min.js"></script><script src="/js/pjax.js"></script><!--!--><!--!--><!--!--><script data-pjax src="/js/main.js" defer></script><div class="searchbox"><div class="searchbox-container"><div class="searchbox-header"><div class="searchbox-input-container"><input class="searchbox-input" type="text" placeholder="想要查找什么..."></div><a class="searchbox-close" href="javascript:;">×</a></div><div class="searchbox-body"></div></div></div><script data-pjax src="/js/insight.js" defer></script><script data-pjax>document.addEventListener('DOMContentLoaded', function () {
+            loadInsight({"contentUrl":"/content.json"}, {"hint":"想要查找什么...","untitled":"(无标题)","posts":"文章","pages":"页面","categories":"分类","tags":"标签"});
+        });</script></body></html>

@@ -1,0 +1,377 @@
+<!doctype html>
+<html lang="zh"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1"><meta><meta name="referrer" content="no-referrer"><title>上下文压缩与 Token 管理 - Hexo</title><link rel="manifest" href="/manifest.json"><meta name="application-name" content="Hexo"><meta name="msapplication-TileImage" content="/img/favicon.svg"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="Hexo"><meta name="apple-mobile-web-app-status-bar-style" content="default"><meta name="description" content="Agent Loop 的 messages 只增不减、每轮整个发一遍，不主动管，迟早撞上上下文窗口。这篇讲两层策略怎么分工：便宜的那层把大工具结果写磁盘、只留预览和路径，贵的那层用一次 LLM 调用把历史压成结构化摘要。中间夹着最反直觉的那个约束——替换决策一旦做出就不能反悔，因为对话前缀改一个字，prompt cache 就全部失效。最后是压缩失败时的三条兜底路径。"><meta property="og:type" content="blog"><meta property="og:title" content="上下文压缩与 Token 管理"><meta property="og:url" content="https://wywzixin.github.io/agent/context-compaction/"><meta property="og:site_name" content="Hexo"><meta property="og:description" content="Agent Loop 的 messages 只增不减、每轮整个发一遍，不主动管，迟早撞上上下文窗口。这篇讲两层策略怎么分工：便宜的那层把大工具结果写磁盘、只留预览和路径，贵的那层用一次 LLM 调用把历史压成结构化摘要。中间夹着最反直觉的那个约束——替换决策一旦做出就不能反悔，因为对话前缀改一个字，prompt cache 就全部失效。最后是压缩失败时的三条兜底路径。"><meta property="og:locale" content="zh_CN"><meta property="og:image" content="https://cdn.nlark.com/yuque/0/2026/png/276041/1784253879895-68c2d01a-cec6-485b-bb6b-0266d2a9a50d.png"><meta property="og:image" content="https://cdn.nlark.com/yuque/0/2026/png/276041/1784253937648-594c9676-a0ec-4794-84c9-6efe4745876d.png"><meta property="og:image" content="https://cdn.nlark.com/yuque/0/2026/png/276041/1784254117772-53ec41a9-216c-4fc1-b6a0-689da3e81822.png"><meta property="og:image" content="https://cdn.nlark.com/yuque/0/2026/png/276041/1784254887865-d82522df-8506-4b32-a17b-25d74562fae3.png"><meta property="og:image" content="https://cdn.nlark.com/yuque/0/2026/png/276041/1784255022184-bddd5177-2f52-4114-96b3-f169dc0eff69.png"><meta property="og:image" content="https://cdn.nlark.com/yuque/0/2026/png/276041/1784255158629-6f010fa0-4b6d-4b88-aa97-2d5ec7ac2bd4.png"><meta property="og:image" content="https://cdn.nlark.com/yuque/0/2026/png/276041/1784255198780-1442bbad-be08-43f2-b1da-90813631404f.png"><meta property="og:image" content="https://cdn.nlark.com/yuque/0/2026/png/276041/1784255263372-25342ace-a9ec-4b7a-a45d-7cf4a5e64c8a.png"><meta property="og:image" content="https://cdn.nlark.com/yuque/0/2026/png/276041/1784255291937-fb69cb72-5b0c-43cf-9c28-6f94be64a188.png"><meta property="og:image" content="https://cdn.nlark.com/yuque/0/2026/png/276041/1784255319124-55e047f1-66d2-4475-b6a0-9e1664ad0ed6.png"><meta property="og:image" content="https://cdn.nlark.com/yuque/0/2026/png/276041/1784255375808-e2075704-a3be-4ea1-a781-c78691cce39c.png"><meta property="og:image" content="https://cdn.nlark.com/yuque/0/2026/png/276041/1784255392864-a68d3df3-7f01-4bd2-af86-b3fa66ad38a8.png"><meta property="og:image" content="https://cdn.nlark.com/yuque/0/2026/png/276041/1784255466835-9ce25db1-8cfe-4619-abfe-1ae51a4ca9d2.png"><meta property="og:image" content="https://cdn.nlark.com/yuque/0/2026/png/276041/1784255476700-5562cf0d-1bbb-4ca1-a5a6-7757a46bc645.png"><meta property="article:published_time" content="2026-09-14T20:00:00.000Z"><meta property="article:modified_time" content="2026-09-14T17:19:06.150Z"><meta property="article:author" content="wangyawei"><meta property="article:tag" content="agent"><meta property="article:tag" content="上下文压缩"><meta property="article:tag" content="Token"><meta property="article:tag" content="prompt cache"><meta property="twitter:card" content="summary"><meta property="twitter:image:src" content="https://cdn.nlark.com/yuque/0/2026/png/276041/1784253879895-68c2d01a-cec6-485b-bb6b-0266d2a9a50d.png"><script type="application/ld+json">{"@context":"https://schema.org","@type":"BlogPosting","mainEntityOfPage":{"@type":"WebPage","@id":"https://wywzixin.github.io/agent/context-compaction/"},"headline":"上下文压缩与 Token 管理","image":["https://cdn.nlark.com/yuque/0/2026/png/276041/1784253879895-68c2d01a-cec6-485b-bb6b-0266d2a9a50d.png","https://cdn.nlark.com/yuque/0/2026/png/276041/1784253937648-594c9676-a0ec-4794-84c9-6efe4745876d.png","https://cdn.nlark.com/yuque/0/2026/png/276041/1784254117772-53ec41a9-216c-4fc1-b6a0-689da3e81822.png","https://cdn.nlark.com/yuque/0/2026/png/276041/1784254887865-d82522df-8506-4b32-a17b-25d74562fae3.png","https://cdn.nlark.com/yuque/0/2026/png/276041/1784255022184-bddd5177-2f52-4114-96b3-f169dc0eff69.png","https://cdn.nlark.com/yuque/0/2026/png/276041/1784255158629-6f010fa0-4b6d-4b88-aa97-2d5ec7ac2bd4.png","https://cdn.nlark.com/yuque/0/2026/png/276041/1784255198780-1442bbad-be08-43f2-b1da-90813631404f.png","https://cdn.nlark.com/yuque/0/2026/png/276041/1784255263372-25342ace-a9ec-4b7a-a45d-7cf4a5e64c8a.png","https://cdn.nlark.com/yuque/0/2026/png/276041/1784255291937-fb69cb72-5b0c-43cf-9c28-6f94be64a188.png","https://cdn.nlark.com/yuque/0/2026/png/276041/1784255319124-55e047f1-66d2-4475-b6a0-9e1664ad0ed6.png","https://cdn.nlark.com/yuque/0/2026/png/276041/1784255375808-e2075704-a3be-4ea1-a781-c78691cce39c.png","https://cdn.nlark.com/yuque/0/2026/png/276041/1784255392864-a68d3df3-7f01-4bd2-af86-b3fa66ad38a8.png","https://cdn.nlark.com/yuque/0/2026/png/276041/1784255466835-9ce25db1-8cfe-4619-abfe-1ae51a4ca9d2.png","https://cdn.nlark.com/yuque/0/2026/png/276041/1784255476700-5562cf0d-1bbb-4ca1-a5a6-7757a46bc645.png"],"datePublished":"2026-09-14T20:00:00.000Z","dateModified":"2026-09-14T17:19:06.150Z","author":{"@type":"Person","name":"wangyawei"},"publisher":{"@type":"Organization","name":"Hexo","logo":{"@type":"ImageObject","url":"https://wywzixin.github.io/img/logo.svg"}},"description":"Agent Loop 的 messages 只增不减、每轮整个发一遍，不主动管，迟早撞上上下文窗口。这篇讲两层策略怎么分工：便宜的那层把大工具结果写磁盘、只留预览和路径，贵的那层用一次 LLM 调用把历史压成结构化摘要。中间夹着最反直觉的那个约束——替换决策一旦做出就不能反悔，因为对话前缀改一个字，prompt cache 就全部失效。最后是压缩失败时的三条兜底路径。"}</script><link rel="canonical" href="https://wywzixin.github.io/agent/context-compaction/"><link rel="icon" href="/img/favicon.svg"><style>html,body{background:#f7f7f7}</style><link rel="stylesheet" href="https://use.fontawesome.com/releases/v6.0.0/css/all.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js@11.7.0/styles/atom-one-dark.css"><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Ubuntu:wght@400;600&amp;family=Source+Code+Pro"><link rel="stylesheet" href="/css/default.css"><!--!--><!--!--><!--!--><!--!--><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/cookieconsent@3.1.1/build/cookieconsent.min.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/lightgallery@1.10.0/dist/css/lightgallery.min.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/justifiedGallery@3.8.1/dist/css/justifiedGallery.min.css"><!--!--><!--!--><!--!--><style>.pace{-webkit-pointer-events:none;pointer-events:none;-webkit-user-select:none;-moz-user-select:none;user-select:none}.pace-inactive{display:none}.pace .pace-progress{background:#3273dc;position:fixed;z-index:2000;top:0;right:100%;width:100%;height:2px}</style><script src="https://cdn.jsdelivr.net/npm/pace-js@1.2.4/pace.min.js"></script><!--!--><!--!--><!-- hexo injector head_end start --><script>
+  (function () {
+      function switchTab() {
+          if (!location.hash) {
+            return;
+          }
+
+          const id = '#' + CSS.escape(location.hash.substring(1));
+          const $tabMenu = document.querySelector(`.tabs a[href="${id}"]`);
+          if (!$tabMenu) {
+            return;
+          }
+
+          const $tabMenuContainer = $tabMenu.parentElement.parentElement;
+          Array.from($tabMenuContainer.children).forEach($menu => $menu.classList.remove('is-active'));
+          Array.from($tabMenuContainer.querySelectorAll('a'))
+              .map($menu => document.getElementById($menu.getAttribute("href").substring(1)))
+              .forEach($content => $content.classList.add('is-hidden'));
+
+          if ($tabMenu) {
+              $tabMenu.parentElement.classList.add('is-active');
+          }
+          const $activeTab = document.querySelector(id);
+          if ($activeTab) {
+              $activeTab.classList.remove('is-hidden');
+          }
+      }
+      switchTab();
+      window.addEventListener('hashchange', switchTab, false);
+  })();
+  </script><!-- hexo injector head_end end --><meta name="generator" content="Hexo 7.3.0"></head><body class="is-3-column"><nav class="navbar navbar-main"><div class="container navbar-container"><div class="navbar-brand justify-content-center"><a class="navbar-item navbar-logo" href="/"><img src="/img/logo.svg" alt="Hexo" height="28"></a></div><div class="navbar-menu"><div class="navbar-start"><a class="navbar-item" href="/">首页</a><a class="navbar-item" href="/archives">归档</a><a class="navbar-item" href="/categories">分类</a><a class="navbar-item" href="/tags">标签</a><a class="navbar-item" href="/about">关于</a></div><div class="navbar-end"><a class="navbar-item" target="_blank" rel="noopener" title="Download on GitHub" href="https://github.com/ppoffice/hexo-theme-icarus"><i class="fab fa-github"></i></a><a class="navbar-item search" title="搜索" href="javascript:;"><i class="fas fa-search"></i></a></div></div></div></nav><section class="section"><div class="container"><div class="columns"><div class="column order-2 column-main is-8-tablet is-8-desktop is-6-widescreen"><div class="card"><article class="card-content article" role="article"><div class="article-meta is-size-7 is-uppercase level is-mobile"><div class="level-left"><span class="level-item"><time dateTime="2026-09-14T20:00:00.000Z" title="2026/9/15 04:00:00">2026-09-15</time>发表</span><span class="level-item"><time dateTime="2026-09-14T17:19:06.150Z" title="2026/9/15 01:19:06">2026-09-15</time>更新</span><span class="level-item"><a class="link-muted" href="/categories/agent/">agent</a></span><span class="level-item">35 分钟读完 (大约5254个字)</span></div></div><h1 class="title is-3 is-size-4-mobile">上下文压缩与 Token 管理</h1><div class="content"><p><strong>Agent 的上下文管理分两层：便宜的那层先把大结果挪出上下文，贵的那层用一次 LLM 调用把历史压成摘要。</strong></p>
+<p>设计哲学四个字：<strong>能轻则轻</strong>。轻量手段能扛住的，绝不动用昂贵的全量摘要。</p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>第 1 层：大结果存磁盘</th>
+<th>第 2 层：全量摘要</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>信息损失</td>
+<td>几乎为零</td>
+<td><strong>高</strong></td>
+</tr>
+<tr>
+<td>API 开销</td>
+<td><strong>零</strong></td>
+<td>高（<strong>多一次 LLM 调用</strong>）</td>
+</tr>
+<tr>
+<td>定位</td>
+<td>便宜的预防</td>
+<td>贵但强的兜底</td>
+</tr>
+</tbody></table>
+<p>问题本身上一篇已经说清了：<code>messages</code> 只增不减、每轮整个发一遍，token 消耗是<strong>平方级</strong>增长（<a href="/agent/react-agent-loop/">ReAct 与 Agent Loop</a> §5）。而上下文窗口是个硬数字——200,000 就是 200,000，超了 API 直接拒绝。</p>
+<p><strong>所以不能等它涨到极限，得主动管。</strong></p>
+<span id="more"></span>
+
+<h2 id="1-两层管的是两个不同的东西"><a href="#1-两层管的是两个不同的东西" class="headerlink" title="1. 两层管的是两个不同的东西"></a>1. 两层管的是两个不同的东西</h2><p>先说清楚这两层不是”简单版”和”复杂版”，它们<strong>解决的是不同维度的问题</strong>：</p>
+<ul>
+<li><strong>第 1 层管单条消息的大小</strong> —— 防止一次超大的工具输出直接把上下文撑爆</li>
+<li><strong>第 2 层管对话历史的累积长度</strong> —— 防止几十轮对话下来总量超限</li>
+</ul>
+<p><img src="https://cdn.nlark.com/yuque/0/2026/png/276041/1784253879895-68c2d01a-cec6-485b-bb6b-0266d2a9a50d.png"></p>
+<p>两个运行场景能把这个分工说透：</p>
+<ul>
+<li>Agent 连着读了 20 个小文件，<strong>每个都没超第 1 层的阈值，第 1 层什么也没做</strong>；但累积下来总量逼近 167K，第 2 层触发，把 20 轮对话压成一份几千 token 的摘要</li>
+<li>Agent 执行了一条命令，输出 80K 字符日志。<strong>第 1 层把它存盘、只留 2K 预览</strong>；上下文总量离阈值还远，第 2 层完全不触发</li>
+</ul>
+<p><strong>两层各管各的，谁也不越界。</strong> 下面逐个说。</p>
+<h2 id="2-第-1-层：大结果存磁盘"><a href="#2-第-1-层：大结果存磁盘" class="headerlink" title="2. 第 1 层：大结果存磁盘"></a>2. 第 1 层：大结果存磁盘</h2><h3 id="单个结果超限"><a href="#单个结果超限" class="headerlink" title="单个结果超限"></a>单个结果超限</h3><p><strong>一个工具的执行结果超过 50,000 个字符（约 12,500 token）时，系统不会把完整内容塞进对话历史</strong>，而是做两件事：</p>
+<ol>
+<li>完整结果<strong>写到磁盘上的一个文件</strong></li>
+<li>对话历史里只放一个<strong>预览加文件路径</strong></li>
+</ol>
+<p><img src="https://cdn.nlark.com/yuque/0/2026/png/276041/1784253937648-594c9676-a0ec-4794-84c9-6efe4745876d.png"></p>
+<p>模型看到的实际内容长这样：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><span class="line">&lt;persisted-output&gt;</span><br><span class="line">输出太大（80KB），完整内容已保存到：</span><br><span class="line">.agent/session/tool-results/toolu_abc123.txt</span><br><span class="line"></span><br><span class="line">预览（前 2KB）：</span><br><span class="line">=== 测试运行结果 ===</span><br><span class="line">PASS: TestUserCreate (0.02s)</span><br><span class="line">PASS: TestUserUpdate (0.01s)</span><br><span class="line">FAIL: TestUserDelete (0.03s)</span><br><span class="line">    expected: nil, got: permission denied</span><br><span class="line">...</span><br><span class="line">&lt;/persisted-output&gt;</span><br></pre></td></tr></table></figure>
+
+<p>这个设计好在<strong>信息没有丢</strong>——只是从上下文里挪到了磁盘上。模型看到预览觉得有用，可以再去读那个文件；不需要，就白拿一个 2K 的摘要。</p>
+<p><strong>代价几乎为零：不花 API 调用，不花时间。</strong></p>
+<h3 id="聚合限制：单条没超，合起来超了"><a href="#聚合限制：单条没超，合起来超了" class="headerlink" title="聚合限制：单条没超，合起来超了"></a>聚合限制：单条没超，合起来超了</h3><p>光管单个结果还不够。想一个场景：<strong>一轮里模型并行调了 10 个工具，每个结果都是 40K 字符</strong>——单个都没超 50K 阈值，但合起来是 400K。</p>
+<p>所以除了单个工具的上限，还有一条<strong>每条消息的聚合限制：200K 字符</strong>。超了就把最大的那些存盘，直到总量降到预算以内。</p>
+<p><img src="https://cdn.nlark.com/yuque/0/2026/png/276041/1784254117772-53ec41a9-216c-4fc1-b6a0-689da3e81822.png"></p>
+<p>上图里 10 × 40K &#x3D; 400K，把最大的 6 个存盘，剩下 4 × 40K &#x3D; 160K，达标。</p>
+<p><strong>注意挑的是”最大的那些”</strong>——同样的压缩收益，挑大的能少存几个，留下更多完整内容。</p>
+<h3 id="为什么阈值是字符数，不是-token"><a href="#为什么阈值是字符数，不是-token" class="headerlink" title="为什么阈值是字符数，不是 token"></a>为什么阈值是字符数，不是 token</h3><p>因为<strong>字符数是本地能立刻算出来的，token 数不是</strong>。</p>
+<p>你要精确知道 token 数，得调用供应商的计数接口（多一次往返），或者本地跑分词器（依赖具体模型，还会有偏差）。而工具结果的裁剪是<strong>每轮、每个结果都要做</strong>的判断——不能每次都去问。</p>
+<p><strong>用字符数做近似，用一个宽松的阈值吸收误差，这是工程上的取舍。</strong> 精确的那部分留给第 2 层（它的阈值是 token 数，因为它本来就要多花一次调用）。</p>
+<h2 id="3-决策冻结：替换过一次，就不能反悔"><a href="#3-决策冻结：替换过一次，就不能反悔" class="headerlink" title="3. 决策冻结：替换过一次，就不能反悔"></a>3. 决策冻结：替换过一次，就不能反悔</h2><p>这一节是整个上下文管理里最反直觉的部分。</p>
+<p>假设第 1 层发现总量超了，要挑几个工具结果存盘。<strong>最自然的想法是”每轮重新评估一遍所有结果，挑最该替换的”。</strong></p>
+<p>这个想法会直接毁掉 prompt cache。</p>
+<h3 id="为什么"><a href="#为什么" class="headerlink" title="为什么"></a>为什么</h3><p><a href="/agent/llm-request-streaming/">LLM 请求与流式响应</a> 里说过：<strong>提示词缓存要求前缀完全稳定，改一个字整段缓存就失效。</strong></p>
+<p>而工具结果在 <code>messages</code> 里的位置是<strong>靠前</strong>的——它是历史的一部分。所以：</p>
+<ul>
+<li>如果第 3 轮把 X 换了，第 4 轮又不换 X 了，<strong>X 那个位置的内容变了，从那里往后的整条前缀全部失效</strong></li>
+<li>前缀一变，缓存不命中，<strong>每一轮都在为重复处理前缀买单</strong></li>
+</ul>
+<p>所以正确的做法是：<strong>决策一旦做出，就冻结。</strong></p>
+<h3 id="三类结果，三种待遇"><a href="#三类结果，三种待遇" class="headerlink" title="三类结果，三种待遇"></a>三类结果，三种待遇</h3><p>系统维护一个 <code>ContentReplacementState</code>，记录每个 <code>tool_use_id</code> 的替换决策。每一轮面对工具结果时，把它们分成三类：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">已替换过的      → 用缓存的预览字符串原样重放，不重新生成</span><br><span class="line">已决定不替换的   → 永远保留原文，不再评估</span><br><span class="line">新产生的        → 正常评估是否需要替换，做出决策后冻结</span><br></pre></td></tr></table></figure>
+
+<p>规则就一句话：<strong>一旦某个工具结果在某一轮被决定「不替换」，这个决定在整个会话内永远不变</strong>——即使后来按聚合限制它应该被替换，也不替换。反过来，如果决定了「替换」，那每一轮都用<strong>完全一样的预览字符串</strong>去替换，确保前缀逐字节不变。</p>
+<h3 id="三轮推演"><a href="#三轮推演" class="headerlink" title="三轮推演"></a>三轮推演</h3><p>看一个具体的例子。预算假设是 20K，消息里依次出现 X(8K)、Y(7K)、Z(9K)：</p>
+<table>
+<thead>
+<tr>
+<th>轮次</th>
+<th>消息</th>
+<th>账</th>
+<th>决定</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>第 1 轮</td>
+<td>X(8K)</td>
+<td>8K ≤ 20K</td>
+<td>X <strong>保留原文</strong>，冻结</td>
+</tr>
+<tr>
+<td>第 2 轮</td>
+<td>X(8K) + Y(7K)</td>
+<td>15K ≤ 20K</td>
+<td>X 已冻结，跳过；Y <strong>保留原文</strong>，冻结</td>
+</tr>
+<tr>
+<td>第 3 轮</td>
+<td>X(8K) + Y(7K) + Z(9K)</td>
+<td>24K &gt; 20K</td>
+<td>X、Y 已冻结不能动，<strong>只能挑 Z</strong></td>
+</tr>
+</tbody></table>
+<p>第三轮是关键：账算不过了，必须挑一个替换——<strong>但能挑的只有 Z</strong>。X 在第 1、2 轮模型看到的都是原文，第三轮突然变成”已存盘”，前缀就漂了，整条缓存失效。Z 是这一轮才第一次出现、还没被冻结过的，可以决定。</p>
+<p>于是 Z 被替换，模型这一轮看到的是：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">X 原文 + Y 原文 + [Z 已存盘...]</span><br></pre></td></tr></table></figure>
+
+<p>往后的第四轮、第五轮不管再产生什么新结果，<strong>X、Y、Z 这三段都不会再变了</strong>。X 永远原文，Y 永远原文，Z 永远是同一串 preview。前缀逐字节稳定，缓存一路命中下去。</p>
+<p><img src="https://cdn.nlark.com/yuque/0/2026/png/276041/1784254887865-d82522df-8506-4b32-a17b-25d74562fae3.png"></p>
+<h3 id="由此得到的那条约束"><a href="#由此得到的那条约束" class="headerlink" title="由此得到的那条约束"></a>由此得到的那条约束</h3><p>这个优化揭示了一个容易被忽视的设计约束：</p>
+<blockquote>
+<p><strong>上下文管理不仅要考虑「保留什么信息」，还要考虑「改动对话前缀的代价」。</strong></p>
+</blockquote>
+<p>很多自己写 Agent 的人会天真地每轮重新评估所有工具结果——<strong>逻辑上更优，实际上 prompt cache 命中率为零</strong>，每轮请求都在为重复处理前缀买单。</p>
+<p>这和第 5 节那条”历史一旦写进去，就当它不可变”是同一个约束的两个面：<strong>一个在说 thinking 块的签名，一个在说工具结果的替换。</strong> 都在说同一句话——<strong>前缀不能动。</strong></p>
+<h2 id="4-第-2-层：全量摘要"><a href="#4-第-2-层：全量摘要" class="headerlink" title="4. 第 2 层：全量摘要"></a>4. 第 2 层：全量摘要</h2><p>第 1 层管的是单条消息。但<strong>20 轮对话，每轮都不大</strong>，累积下来一样会撞墙。这时候只能动历史本身：<strong>调用 LLM 自己来生成一份对话摘要。</strong></p>
+<h3 id="阈值是怎么算出来的"><a href="#阈值是怎么算出来的" class="headerlink" title="阈值是怎么算出来的"></a>阈值是怎么算出来的</h3><p>摘要本身也要占空间，所以不能等到 200,000 满了才动手：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">上下文窗口               200,000</span><br><span class="line"> - 预留给摘要输出         - 20,000    摘要本身也要占空间</span><br><span class="line"> = 有效窗口               180,000</span><br><span class="line"> - 安全余量               - 13,000    防止 token 估算误差导致临界抖动</span><br><span class="line"> = 自动压缩阈值            167,000    超过这个数就触发全量摘要</span><br></pre></td></tr></table></figure>
+
+<p><img src="https://cdn.nlark.com/yuque/0/2026/png/276041/1784255022184-bddd5177-2f52-4114-96b3-f169dc0eff69.png"></p>
+<p>那 13,000 的安全余量值得单独看一眼：<strong>token 估算是近似的</strong>，如果阈值卡在 180,000，估算偏小的时候就会直接越过硬限制、被 API 拒绝。<strong>留一段余量，是为了让”估算误差”这种正常现象不至于变成故障。</strong></p>
+<h3 id="摘要-Prompt-的设计：9-个部分"><a href="#摘要-Prompt-的设计：9-个部分" class="headerlink" title="摘要 Prompt 的设计：9 个部分"></a>摘要 Prompt 的设计：9 个部分</h3><p>摘要是<strong>有固定结构的</strong>，不是”帮我总结一下”：</p>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>部分</th>
+<th>记什么</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>1</td>
+<td>主要请求和意图</td>
+<td>用户到底想做什么</td>
+</tr>
+<tr>
+<td>2</td>
+<td>关键技术概念</td>
+<td>讨论过的重要技术点</td>
+</tr>
+<tr>
+<td>3</td>
+<td>文件和代码段</td>
+<td>涉及哪些文件，关键代码片段要保留</td>
+</tr>
+<tr>
+<td>4</td>
+<td>错误和修复</td>
+<td>遇到了什么错，怎么解决的</td>
+</tr>
+<tr>
+<td>5</td>
+<td>问题解决过程</td>
+<td>解决问题的思路和方法</td>
+</tr>
+<tr>
+<td>6</td>
+<td><strong>所有用户消息</strong></td>
+<td>用户说过的所有非工具结果的话（<strong>原文保留</strong>）</td>
+</tr>
+<tr>
+<td>7</td>
+<td>待办任务</td>
+<td>还没完成的事</td>
+</tr>
+<tr>
+<td>8</td>
+<td>当前工作</td>
+<td>最近在做什么（<strong>要最详细</strong>）</td>
+</tr>
+<tr>
+<td>9</td>
+<td>可能的下一步</td>
+<td>接下来打算做什么</td>
+</tr>
+</tbody></table>
+<p><img src="https://cdn.nlark.com/yuque/0/2026/png/276041/1784255158629-6f010fa0-4b6d-4b88-aa97-2d5ec7ac2bd4.png"></p>
+<p>三个设计要点：</p>
+<p><strong>一、用户的原始表述必须原文保留，不能摘要改写。</strong> 为什么？<strong>因为用户的原始表述包含意图、偏好、语气，改写会丢掉这些。</strong> 用户说”不要用 <code>interface&#123;&#125;</code>，用 <code>any</code>“，你把它摘要成”用户偏好现代语法”——模型下次可能给出 <code>type any = interface&#123;&#125;</code> 这种<strong>方向完全反了</strong>的东西。<strong>摘要是有损压缩，而用户的话是不能有损的那部分。</strong></p>
+<p><strong>二、越靠后的越要详细。</strong> 第 8 项”当前工作”明确要求最详细，因为<strong>那是接下来要接着干的事</strong>；而前面几轮的探索过程可以粗。</p>
+<p><strong>三、先生成草稿，再产出正稿。</strong> 压缩分两步走：第一步 <code>analysis</code> 是模型自己的梳理草稿（标出重点、理清思路），第二步 <code>summary</code> 才是最终保留的结构化摘要。<strong>草稿用完就丢，不留进上下文。</strong></p>
+<p><img src="https://cdn.nlark.com/yuque/0/2026/png/276041/1784255198780-1442bbad-be08-43f2-b1da-90813631404f.png"></p>
+<h2 id="5-压缩完不是就完了：恢复"><a href="#5-压缩完不是就完了：恢复" class="headerlink" title="5. 压缩完不是就完了：恢复"></a>5. 压缩完不是就完了：恢复</h2><p>摘要把旧消息替换掉了，但<strong>有些关键上下文必须重新附加回来</strong>——不然模型醒来以后会缺东西：</p>
+<table>
+<thead>
+<tr>
+<th>恢复什么</th>
+<th>预算</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>最近访问的文件</strong></td>
+<td>最多 5 个，每个最多 5,000 token</td>
+</tr>
+<tr>
+<td><strong>技能定义</strong></td>
+<td>如果之前用过 Skill，重新注入定义，总预算 25,000 token</td>
+</tr>
+<tr>
+<td><strong>工具列表</strong></td>
+<td>重新声明所有可用工具，确保摘要后的首次请求仍带完整工具定义</td>
+</tr>
+<tr>
+<td><strong>压缩边界消息</strong></td>
+<td>一条特殊消息，见下</td>
+</tr>
+</tbody></table>
+<p><img src="https://cdn.nlark.com/yuque/0/2026/png/276041/1784255263372-25342ace-a9ec-4b7a-a45d-7cf4a5e64c8a.png"></p>
+<p>压缩后的消息列表长这样：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line">1  [system]    你是一个编程助手...</span><br><span class="line">2  [user]      [摘要] 用户要求重构 auth 模块。读取了 handler.go、</span><br><span class="line">               middleware.go、router.go，修复了第 42 行错误处理 bug，</span><br><span class="line">               测试全部通过。待办：还需要更新 API 文档...</span><br><span class="line">3  [assistant] [边界消息] 上面是之前对话的摘要。如果需要文件的具体内容，</span><br><span class="line">               请用 ReadFile 重新读取，不要根据摘要猜测代码细节。</span><br><span class="line">4  [user]      [恢复文件] handler.go 的当前内容：...（最多 5,000 token）</span><br><span class="line">5  [user]      [恢复文件] middleware.go 的当前内容：...</span><br><span class="line">6  [user]      好，接下来帮我更新 API 文档     ← 最近 5 条消息完整保留</span><br><span class="line">7  [assistant] 我来看一下当前的文档结构...</span><br></pre></td></tr></table></figure>
+
+<p><img src="https://cdn.nlark.com/yuque/0/2026/png/276041/1784255291937-fb69cb72-5b0c-43cf-9c28-6f94be64a188.png"></p>
+<p><strong>这里的边界消息是最重要的一条，也最容易被漏掉。</strong></p>
+<p>它的作用是<strong>防止模型”编造”摘要里没有提到的细节</strong>。摘要里只会写”修复了 handler.go”，不会有具体代码——没有这条提示，模型可能<strong>根据这句模糊描述脑补出一段不存在的代码</strong>，然后照着它往下改。</p>
+<p>一句话：<strong>摘要告诉模型”发生过什么”，边界消息告诉它”细节要重新去拿，不要猜”。</strong></p>
+<p><strong>最近 5 条消息完整保留</strong>也是同一个道理——刚刚发生的事细节最密集，摘要一定会丢东西，那就干脆不摘要它。</p>
+<h2 id="6-压缩失败了怎么办：熔断器"><a href="#6-压缩失败了怎么办：熔断器" class="headerlink" title="6. 压缩失败了怎么办：熔断器"></a>6. 压缩失败了怎么办：熔断器</h2><p>自动压缩<strong>本身就是一次额外的大模型调用</strong>，会消耗 token 和时间。而它是有可能失败的：提示词太长、模型拒绝、网络问题、摘要质量差……</p>
+<p><strong>如果压缩一直失败还一直重试，会掉进一个死循环：</strong></p>
+<blockquote>
+<p>上下文已经超限了，每一轮都触发摘要，每一轮都失败，然后每一轮又重试……<strong>Agent 被卡在死循环里。</strong></p>
+</blockquote>
+<p>这里用的是一个很常见的容错模式——<strong>熔断器（Circuit Breaker）</strong>：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">@dataclass</span></span><br><span class="line"><span class="keyword">class</span> <span class="title class_">CompactCircuitBreaker</span>:</span><br><span class="line">    max_failures: <span class="built_in">int</span> = <span class="number">3</span></span><br><span class="line">    consecutive_failures: <span class="built_in">int</span> = field(default=<span class="number">0</span>, init=<span class="literal">False</span>)</span><br><span class="line"></span><br><span class="line">    <span class="keyword">def</span> <span class="title function_">record_failure</span>(<span class="params">self</span>) -&gt; <span class="literal">None</span>:</span><br><span class="line">        <span class="variable language_">self</span>.consecutive_failures += <span class="number">1</span></span><br><span class="line"></span><br><span class="line">    <span class="keyword">def</span> <span class="title function_">record_success</span>(<span class="params">self</span>) -&gt; <span class="literal">None</span>:</span><br><span class="line">        <span class="variable language_">self</span>.consecutive_failures = <span class="number">0</span></span><br><span class="line"></span><br><span class="line">    <span class="keyword">def</span> <span class="title function_">is_open</span>(<span class="params">self</span>) -&gt; <span class="built_in">bool</span>:</span><br><span class="line">        <span class="keyword">return</span> <span class="variable language_">self</span>.consecutive_failures &gt;= <span class="variable language_">self</span>.max_failures</span><br></pre></td></tr></table></figure>
+
+<p>逻辑就三条：</p>
+<ul>
+<li>压缩<strong>失败一次</strong> → 计数 +1</li>
+<li>压缩<strong>成功一次</strong> → 计数清零</li>
+<li><strong>连续失败 3 次</strong> → 熔断器打开</li>
+</ul>
+<p>打开以后，<strong>暂时停止自动压缩</strong>，返回提示让用户手动处理（<code>/compact</code>）：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># 处于软硬阈值之间时</span></span><br><span class="line"><span class="keyword">if</span> breaker <span class="keyword">is</span> <span class="keyword">not</span> <span class="literal">None</span> <span class="keyword">and</span> breaker.is_open():</span><br><span class="line">    <span class="keyword">return</span> <span class="string">&quot;自动压缩已熔断（连续失败 3 次），请手动处理或使用 /compact&quot;</span></span><br></pre></td></tr></table></figure>
+
+<table>
+<thead>
+<tr>
+<th>状态</th>
+<th>熔断器行为</th>
+<th>类比</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>正常</td>
+<td>允许自动压缩</td>
+<td>电路正常通电</td>
+</tr>
+<tr>
+<td>连续失败 3 次</td>
+<td>打开熔断，停止自动压缩</td>
+<td>跳闸，保护线路</td>
+</tr>
+<tr>
+<td>手动压缩成功 &#x2F; 强制压缩</td>
+<td>清零计数</td>
+<td>重新合闸</td>
+</tr>
+</tbody></table>
+<p><strong>注意这里有个细节：只有在软阈值和硬阈值之间才会检查熔断器。</strong></p>
+<p>一旦超过硬阈值，会<strong>强制压缩，无视熔断器</strong>——因为再不压就真的要炸了。熔断保护的是”还有余地时别浪费钱”，不是”宁可炸了也不压”。</p>
+<p><img src="https://cdn.nlark.com/yuque/0/2026/png/276041/1784255319124-55e047f1-66d2-4475-b6a0-9e1664ad0ed6.png"></p>
+<h2 id="7-另外两条路径：紧急压缩和手动压缩"><a href="#7-另外两条路径：紧急压缩和手动压缩" class="headerlink" title="7. 另外两条路径：紧急压缩和手动压缩"></a>7. 另外两条路径：紧急压缩和手动压缩</h2><p>熔断是”压缩自身出问题”时的处理。但还有一条路径要兜：<strong>正常的对话请求发出去，API 返回 <code>prompt_too_long</code> 错误。</strong></p>
+<p>这说明<strong>自动压缩的阈值没挡住</strong>。可能是 token 估算偏差太大，也可能某一轮工具结果异常巨大，两次检查之间直接跳过了阈值。不管什么原因，结果是上下文已经超了 API 的硬限制，请求被拒绝。</p>
+<p>不处理的话，Agent 就直接报错停工了，用户只能手动 <code>/compact</code> 然后重试。</p>
+<p><strong>做法是在 Agent Loop 里捕获这个错误，立刻触发一次 <code>ForceCompact</code>，压缩完用新的消息列表重试原来的请求。</strong> 相当于”撞墙了，赶紧压缩，然后再试一次”。如果压缩后仍然超限，就按正常错误流程处理，不再无限重试。</p>
+<blockquote>
+<p><strong>自动压缩是预防，紧急压缩是治疗。</strong> 大部分情况下自动压缩能在撞墙前拦住；万一因为估算误差或极端情况漏过去了，紧急压缩兜底，<strong>让 Agent 不至于因为一次估算偏差就彻底瘫痪。</strong></p>
+</blockquote>
+<p><img src="https://cdn.nlark.com/yuque/0/2026/png/276041/1784255375808-e2075704-a3be-4ea1-a781-c78691cce39c.png"></p>
+<h3 id="手动-compact"><a href="#手动-compact" class="headerlink" title="手动 &#x2F;compact"></a>手动 &#x2F;compact</h3><p>除了自动压缩，用户随时可以输入 <code>/compact</code> 手动触发。两个典型场景：</p>
+<ul>
+<li><strong>预防性压缩</strong> —— 你知道接下来要读一大堆文件，<strong>提前压缩腾出空间</strong></li>
+<li><strong>话题切换</strong> —— 前面的对话在调 bug A，现在要处理 bug B。<strong>手动压缩清理掉 bug A 的细节，减少噪声</strong></li>
+</ul>
+<p><img src="https://cdn.nlark.com/yuque/0/2026/png/276041/1784255392864-a68d3df3-7f01-4bd2-af86-b3fa66ad38a8.png"></p>
+<p>有个数字对比值得注意：<strong>手动压缩的安全余量只有 3,000，比自动的 13,000 小得多。</strong> 因为用户主动触发意味着<strong>他知道自己在做什么</strong>——不需要系统替他留那么大一段安全垫。</p>
+<h2 id="8-两层是怎么协作的"><a href="#8-两层是怎么协作的" class="headerlink" title="8. 两层是怎么协作的"></a>8. 两层是怎么协作的</h2><p>最后把两层串起来。每次调 API 之前，依次做两件事：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line">新一轮请求准备发送</span><br><span class="line">    ↓</span><br><span class="line">① 第 1 层：大结果存磁盘      ← 预防 · 零成本</span><br><span class="line">    ↓  第 1 层管单条大小，第 2 层管累积长度</span><br><span class="line">② 第 2 层：全量摘要          ← 治疗 · 一次 API 调用</span><br><span class="line">    ↓</span><br><span class="line">发送 API 请求</span><br></pre></td></tr></table></figure>
+
+<p><img src="https://cdn.nlark.com/yuque/0/2026/png/276041/1784255466835-9ce25db1-8cfe-4619-abfe-1ae51a4ca9d2.png"></p>
+<p>两个方法的职责边界很清楚：</p>
+<ul>
+<li><strong><code>applyToolResultBudget</code> 先执行</strong>，检查<strong>新产生的</strong>工具结果有没有超限。它解决的是”单次工具输出太大”，是一个<strong>预防性</strong>措施</li>
+<li><strong><code>autoCompact</code> 紧接着执行</strong>，检查<strong>整体上下文</strong>有没有逼近窗口上限。它解决的是”对话累积过长”，是一个<strong>治疗性</strong>措施</li>
+</ul>
+<p><img src="https://cdn.nlark.com/yuque/0/2026/png/276041/1784255476700-5562cf0d-1bbb-4ca1-a5a6-7757a46bc645.png"></p>
+<p>顺序不能反：</p>
+<p><strong>先做便宜的那层。</strong> 第 1 层做完以后，总量可能已经降到阈值以下了，第 2 层就完全不用触发——<strong>省下一次 LLM 调用</strong>。反过来先摘要再存盘，就白白花了一次调用去总结本来要被挪走的内容。</p>
+<h2 id="9-小结"><a href="#9-小结" class="headerlink" title="9. 小结"></a>9. 小结</h2><p><strong>一、两层管两个维度。</strong> 第 1 层管<strong>单条消息的大小</strong>（大结果存磁盘，信息损失近零、API 开销零），第 2 层管<strong>对话历史的累积长度</strong>（全量摘要，信息损失高、要花一次调用）。<strong>能轻则轻，先便宜的后贵的。</strong></p>
+<p><strong>二、第 1 层有两个阈值</strong>：单个结果 50,000 字符，每条消息聚合 200,000 字符。用字符数是因为<strong>它是本地能立刻算出来的</strong>——token 数不是。</p>
+<p><strong>三、替换决策必须冻结。</strong> 一旦决定”不替换”就永远不反悔，一旦决定”替换”就每轮原样重放同一串 preview。<strong>每轮重新评估逻辑上更优，实际上会让 prompt cache 命中率归零。</strong> 上下文管理不仅要考虑”保留什么信息”，还要考虑「<strong>改动对话前缀的代价</strong>」。</p>
+<p><strong>四、摘要是结构化的 9 个部分</strong>，其中<strong>用户的原始表述必须原文保留</strong>——摘要是有损压缩，而用户的话是不能有损的那部分。压缩完还要<strong>恢复</strong>最近的文件、技能定义、工具列表，以及那条最容易被漏掉的<strong>边界消息</strong>（”细节请重新读，不要根据摘要猜”）。</p>
+<p><strong>五、压缩会失败，所以要熔断。</strong> 连续失败 3 次就停下，交给用户——<strong>但在硬阈值之上会无视熔断强制压缩</strong>。除此之外还有两条兜底：捕获 <code>prompt_too_long</code> 后紧急压缩重试，以及用户手动 <code>/compact</code>。</p>
+<p><strong>六、顺序是先便宜后贵。</strong> 第 1 层跑完可能就不用第 2 层了——<strong>这就是”能轻则轻”在代码里的样子。</strong></p>
+<h2 id="参考"><a href="#参考" class="headerlink" title="参考"></a>参考</h2><ul>
+<li>提示词缓存（<code>cache_control</code>，前缀必须稳定）：<a target="_blank" rel="noopener" href="https://platform.claude.com/docs/en/build-with-claude/prompt-caching">https://platform.claude.com/docs/en/build-with-claude/prompt-caching</a></li>
+<li>上一篇：Function Calling —— <a href="https://wywzixin.github.io/agent/function-calling/">https://wywzixin.github.io/agent/function-calling/</a></li>
+<li>ReAct 与 Agent Loop（上下文为什么是平方级增长）：<a href="https://wywzixin.github.io/agent/react-agent-loop/">https://wywzixin.github.io/agent/react-agent-loop/</a></li>
+<li>LLM 请求与流式响应 —— <a href="https://wywzixin.github.io/agent/llm-request-streaming/">https://wywzixin.github.io/agent/llm-request-streaming/</a></li>
+<li>MCP 协议与工具接入 —— <a href="https://wywzixin.github.io/agent/mcp-protocol/">https://wywzixin.github.io/agent/mcp-protocol/</a></li>
+</ul>
+</div><div class="article-licensing box"><div class="licensing-title"><p>上下文压缩与 Token 管理</p><p><a href="https://wywzixin.github.io/agent/context-compaction/">https://wywzixin.github.io/agent/context-compaction/</a></p></div><div class="licensing-meta level is-mobile"><div class="level-left"><div class="level-item is-narrow"><div><h6>作者</h6><p>wangyawei</p></div></div><div class="level-item is-narrow"><div><h6>发布于</h6><p>2026-09-15</p></div></div><div class="level-item is-narrow"><div><h6>更新于</h6><p>2026-09-15</p></div></div><div class="level-item is-narrow"><div><h6>许可协议</h6><p><a class="icons" rel="noopener" target="_blank" title="Creative Commons" href="https://creativecommons.org/"><i class="icon fab fa-creative-commons"></i></a><a class="icons" rel="noopener" target="_blank" title="Attribution" href="https://creativecommons.org/licenses/by/4.0/"><i class="icon fab fa-creative-commons-by"></i></a><a class="icons" rel="noopener" target="_blank" title="Noncommercial" href="https://creativecommons.org/licenses/by-nc/4.0/"><i class="icon fab fa-creative-commons-nc"></i></a></p></div></div></div></div></div><div class="article-tags is-size-7 mb-4"><span class="mr-2">#</span><a class="link-muted mr-2" rel="tag" href="/tags/agent/">agent</a><a class="link-muted mr-2" rel="tag" href="/tags/%E4%B8%8A%E4%B8%8B%E6%96%87%E5%8E%8B%E7%BC%A9/">上下文压缩</a><a class="link-muted mr-2" rel="tag" href="/tags/Token/">Token</a><a class="link-muted mr-2" rel="tag" href="/tags/prompt-cache/">prompt cache</a></div><!--!--></article></div><!--!--><nav class="post-navigation mt-4 level is-mobile"><div class="level-start"><a class="article-nav-prev level level-item link-muted" href="/agent/function-calling/"><i class="level-item fas fa-chevron-left"></i><span class="level-item">Function Calling介绍</span></a></div><div class="level-end"><a class="article-nav-next level level-item link-muted" href="/agent/memory-system/"><span class="level-item">Agent 记忆系统</span><i class="level-item fas fa-chevron-right"></i></a></div></nav><!--!--></div><div class="column column-left is-4-tablet is-4-desktop is-3-widescreen  order-1"><div class="card widget" data-type="profile"><div class="card-content"><nav class="level"><div class="level-item has-text-centered flex-shrink-1"><div><figure class="image is-128x128 mx-auto mb-2"><img class="avatar is-rounded" src="/img/avatar.svg" alt="王亚伟"></figure><p class="title is-size-4 is-block" style="line-height:inherit;">王亚伟</p><p class="is-size-6 is-block">3D · AI</p><p class="is-size-6 is-flex justify-content-center"><i class="fas fa-map-marker-alt mr-1"></i><span>北京</span></p></div></div></nav><nav class="level is-mobile"><div class="level-item has-text-centered is-marginless"><div><p class="heading">文章</p><a href="/archives/"><p class="title">55</p></a></div></div><div class="level-item has-text-centered is-marginless"><div><p class="heading">分类</p><a href="/categories/"><p class="title">9</p></a></div></div><div class="level-item has-text-centered is-marginless"><div><p class="heading">标签</p><a href="/tags/"><p class="title">64</p></a></div></div></nav><div class="level"><a class="level-item button is-primary is-rounded" href="https://github.com/wywzixin" target="_blank" rel="me noopener">关注我</a></div><div class="level is-mobile is-multiline"><a class="level-item button is-transparent is-marginless" target="_blank" rel="me noopener" title="Github" href="https://github.com/wywzixin"><i class="fab fa-github"></i></a><a class="level-item button is-transparent is-marginless" target="_blank" rel="me noopener" title="Facebook" href="https://facebook.com"><i class="fab fa-facebook"></i></a><a class="level-item button is-transparent is-marginless" target="_blank" rel="me noopener" title="Twitter" href="https://twitter.com"><i class="fab fa-twitter"></i></a><a class="level-item button is-transparent is-marginless" target="_blank" rel="me noopener" title="Dribbble" href="https://dribbble.com"><i class="fab fa-dribbble"></i></a><a class="level-item button is-transparent is-marginless" target="_blank" rel="me noopener" title="RSS" href="/"><i class="fas fa-rss"></i></a></div></div></div><!--!--><div class="card widget" data-type="categories"><div class="card-content"><div class="menu"><h3 class="menu-label">分类</h3><ul class="menu-list"><li><a class="level is-mobile" href="/categories/cesium/"><span class="level-start"><span class="level-item">cesium</span></span><span class="level-end"><span class="level-item tag">24</span></span></a></li><li><a class="level is-mobile" href="/categories/threejs/"><span class="level-start"><span class="level-item">threejs</span></span><span class="level-end"><span class="level-item tag">6</span></span></a></li><li><a class="level is-mobile" href="/categories/%E5%8C%97%E6%96%97%E7%BD%91%E6%A0%BC%E6%80%A7%E8%83%BD%E4%BC%98%E5%8C%96/"><span class="level-start"><span class="level-item">北斗网格性能优化</span></span><span class="level-end"><span class="level-item tag">7</span></span></a></li><li><a class="level is-mobile" href="/categories/%E5%9B%BE%E5%BD%A2%E5%AD%A6/"><span class="level-start"><span class="level-item">图形学</span></span><span class="level-end"><span class="level-item tag">1</span></span></a></li><li><a class="level is-mobile" href="/categories/vue/"><span class="level-start"><span class="level-item">vue</span></span><span class="level-end"><span class="level-item tag">2</span></span></a></li><li><a class="level is-mobile" href="/categories/agent/"><span class="level-start"><span class="level-item">agent</span></span><span class="level-end"><span class="level-item tag">8</span></span></a></li><li><a class="level is-mobile" href="/categories/claude-code/"><span class="level-start"><span class="level-item">claude code</span></span><span class="level-end"><span class="level-item tag">2</span></span></a></li><li><a class="level is-mobile" href="/categories/python/"><span class="level-start"><span class="level-item">python</span></span><span class="level-end"><span class="level-item tag">3</span></span></a></li><li><a class="level is-mobile" href="/categories/%E5%A4%A7%E6%A8%A1%E5%9E%8B/"><span class="level-start"><span class="level-item">大模型</span></span><span class="level-end"><span class="level-item tag">2</span></span></a></li></ul></div></div></div><div class="card widget" data-type="tags"><div class="card-content"><div class="menu"><h3 class="menu-label">标签</h3><div class="field is-grouped is-grouped-multiline"><div class="control"><a class="tags has-addons" href="/tags/Agent-Loop/"><span class="tag">Agent Loop</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/Cesium/"><span class="tag">Cesium</span><span class="tag">7</span></a></div><div class="control"><a class="tags has-addons" href="/tags/DrawCommand/"><span class="tag">DrawCommand</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/ENU/"><span class="tag">ENU</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/Embedding/"><span class="tag">Embedding</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/FAISS/"><span class="tag">FAISS</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/Function-Calling/"><span class="tag">Function Calling</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/GPT-3/"><span class="tag">GPT-3</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/GPU-Instancing/"><span class="tag">GPU Instancing</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/L6/"><span class="tag">L6</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/L7/"><span class="tag">L7</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/LLM/"><span class="tag">LLM</span><span class="tag">2</span></a></div><div class="control"><a class="tags has-addons" href="/tags/LOD/"><span class="tag">LOD</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/LRU/"><span class="tag">LRU</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/LangChain/"><span class="tag">LangChain</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/MCP/"><span class="tag">MCP</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/PBR/"><span class="tag">PBR</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/Pinecone/"><span class="tag">Pinecone</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/RAG/"><span class="tag">RAG</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/RTE/"><span class="tag">RTE</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/ReAct/"><span class="tag">ReAct</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/SSE/"><span class="tag">SSE</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/Shader/"><span class="tag">Shader</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/Token/"><span class="tag">Token</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/Transferable/"><span class="tag">Transferable</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/Transformer/"><span class="tag">Transformer</span><span class="tag">2</span></a></div><div class="control"><a class="tags has-addons" href="/tags/Web-Worker/"><span class="tag">Web Worker</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/WebGL/"><span class="tag">WebGL</span><span class="tag">2</span></a></div><div class="control"><a class="tags has-addons" href="/tags/agent/"><span class="tag">agent</span><span class="tag">8</span></a></div><div class="control"><a class="tags has-addons" href="/tags/asyncio/"><span class="tag">asyncio</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/cesium/"><span class="tag">cesium</span><span class="tag">24</span></a></div><div class="control"><a class="tags has-addons" href="/tags/claude-code/"><span class="tag">claude code</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/markstream/"><span class="tag">markstream</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/prompt-cache/"><span class="tag">prompt cache</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/python/"><span class="tag">python</span><span class="tag">3</span></a></div><div class="control"><a class="tags has-addons" href="/tags/threejs/"><span class="tag">threejs</span><span class="tag">6</span></a></div><div class="control"><a class="tags has-addons" href="/tags/vue/"><span class="tag">vue</span><span class="tag">2</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E4%B8%8A%E4%B8%8B%E6%96%87%E5%8E%8B%E7%BC%A9/"><span class="tag">上下文压缩</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E4%B8%8A%E4%B8%8B%E6%96%87%E5%B7%A5%E7%A8%8B/"><span class="tag">上下文工程</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E5%86%85%E5%AD%98%E7%AE%A1%E7%90%86/"><span class="tag">内存管理</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E5%8C%97%E6%96%97%E7%BD%91%E6%A0%BC/"><span class="tag">北斗网格</span><span class="tag">7</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E5%8F%82%E6%95%B0%E9%87%8F/"><span class="tag">参数量</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E5%90%8E%E5%A4%84%E7%90%86/"><span class="tag">后处理</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E5%90%91%E9%87%8F%E6%95%B0%E6%8D%AE%E5%BA%93/"><span class="tag">向量数据库</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E5%93%8D%E5%BA%94%E5%BC%8F%E5%8E%9F%E7%90%86/"><span class="tag">响应式原理</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E5%9B%BE%E5%BD%A2%E5%AD%A6/"><span class="tag">图形学</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E5%A4%9A%E5%A4%B4%E6%B3%A8%E6%84%8F%E5%8A%9B/"><span class="tag">多头注意力</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E5%A4%A7%E6%A8%A1%E5%9E%8B/"><span class="tag">大模型</span><span class="tag">2</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E5%B7%A5%E5%85%B7%E8%B0%83%E7%94%A8/"><span class="tag">工具调用</span><span class="tag">2</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E5%B9%B6%E5%8F%91/"><span class="tag">并发</span><span class="tag">2</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E6%9D%90%E8%B4%A8/"><span class="tag">材质</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E6%9E%B6%E6%9E%84%E8%AE%BE%E8%AE%A1/"><span class="tag">架构设计</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E6%A3%80%E7%B4%A2%E5%A2%9E%E5%BC%BA%E7%94%9F%E6%88%90/"><span class="tag">检索增强生成</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E6%B3%A8%E6%84%8F%E5%8A%9B%E6%9C%BA%E5%88%B6/"><span class="tag">注意力机制</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E6%B5%81%E5%BC%8F%E5%93%8D%E5%BA%94/"><span class="tag">流式响应</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E6%B5%81%E5%BC%8F%E6%B8%B2%E6%9F%93/"><span class="tag">流式渲染</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E7%A9%BA%E9%97%B4%E5%88%86%E5%9D%97/"><span class="tag">空间分块</span><span class="tag">2</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E7%BA%BF%E7%A8%8B%E6%B1%A0/"><span class="tag">线程池</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E7%BC%93%E5%AD%98/"><span class="tag">缓存</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E8%A7%86%E9%94%A5%E5%89%94%E9%99%A4/"><span class="tag">视锥剔除</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E8%AE%B0%E5%BF%86%E7%B3%BB%E7%BB%9F/"><span class="tag">记忆系统</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E8%BD%AE%E5%BB%93%E7%BA%BF/"><span class="tag">轮廓线</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E9%AB%98%E5%BA%A6%E5%88%87%E7%89%87/"><span class="tag">高度切片</span><span class="tag">1</span></a></div></div></div></div></div><div class="card widget" data-type="subscribe-email"><div class="card-content"><div class="menu"><h3 class="menu-label">订阅更新</h3><form action="https://feedburner.google.com/fb/a/mailverify" method="post" target="popupwindow" onsubmit="window.open(&#039;https://feedburner.google.com/fb/a/mailverify?uri=&#039;,&#039;popupwindow&#039;,&#039;scrollbars=yes,width=550,height=520&#039;);return true"><input type="hidden" value="" name="uri"><input type="hidden" name="loc" value="en_US"><div class="field has-addons"><div class="control has-icons-left is-expanded"><input class="input" name="email" type="email" placeholder="Email"><span class="icon is-small is-left"><i class="fas fa-envelope"></i></span></div><div class="control"><input class="button" type="submit" value="订阅"></div></div></form></div></div></div><div class="column-right-shadow is-hidden-widescreen"></div></div><div class="column column-right is-4-tablet is-4-desktop is-3-widescreen is-hidden-touch is-hidden-desktop-only order-3"><div class="card widget" data-type="recent-posts"><div class="card-content"><h3 class="menu-label">最新文章</h3><article class="media"><div class="media-content"><p class="date"><time dateTime="2026-09-15T00:00:00.000Z">2026-09-15</time></p><p class="title"><a href="/agent/llm-request-streaming/">LLM 请求与流式响应</a></p><p class="categories"><a href="/categories/agent/">agent</a></p></div></article><article class="media"><div class="media-content"><p class="date"><time dateTime="2026-09-14T23:00:00.000Z">2026-09-15</time></p><p class="title"><a href="/agent/react-agent-loop/">ReAct 与 Agent Loop</a></p><p class="categories"><a href="/categories/agent/">agent</a></p></div></article><article class="media"><div class="media-content"><p class="date"><time dateTime="2026-09-14T22:00:00.000Z">2026-09-15</time></p><p class="title"><a href="/agent/mcp-protocol/">MCP 协议与工具接入</a></p><p class="categories"><a href="/categories/agent/">agent</a></p></div></article><article class="media"><div class="media-content"><p class="date"><time dateTime="2026-09-14T21:00:00.000Z">2026-09-15</time></p><p class="title"><a href="/agent/function-calling/">Function Calling介绍</a></p><p class="categories"><a href="/categories/agent/">agent</a></p></div></article><article class="media"><div class="media-content"><p class="date"><time dateTime="2026-09-14T20:00:00.000Z">2026-09-15</time></p><p class="title"><a href="/agent/context-compaction/">上下文压缩与 Token 管理</a></p><p class="categories"><a href="/categories/agent/">agent</a></p></div></article></div></div><div class="card widget" data-type="archives"><div class="card-content"><div class="menu"><h3 class="menu-label">归档</h3><ul class="menu-list"><li><a class="level is-mobile" href="/archives/2026/09/"><span class="level-start"><span class="level-item">九月 2026</span></span><span class="level-end"><span class="level-item tag">25</span></span></a></li><li><a class="level is-mobile" href="/archives/2026/03/"><span class="level-start"><span class="level-item">三月 2026</span></span><span class="level-end"><span class="level-item tag">4</span></span></a></li><li><a class="level is-mobile" href="/archives/2025/03/"><span class="level-start"><span class="level-item">三月 2025</span></span><span class="level-end"><span class="level-item tag">25</span></span></a></li><li><a class="level is-mobile" href="/archives/2025/01/"><span class="level-start"><span class="level-item">一月 2025</span></span><span class="level-end"><span class="level-item tag">1</span></span></a></li></ul></div></div></div></div></div></div></section><footer class="footer"><div class="container"><div class="level"><div class="level-start"><a class="footer-logo is-block mb-2" href="/"><img src="/img/logo.svg" alt="Hexo" height="28"></a><p class="is-size-7"><span>&copy; 2026 wangyawei</span>  Powered by <a href="https://hexo.io/" target="_blank" rel="noopener">Hexo</a> &amp; <a href="https://github.com/ppoffice/hexo-theme-icarus" target="_blank" rel="noopener">Icarus</a></p><p class="is-size-7">© 2019</p></div><div class="level-end"><div class="field has-addons"><p class="control"><a class="button is-transparent is-large" target="_blank" rel="noopener" title="Creative Commons" href="https://creativecommons.org/"><i class="fab fa-creative-commons"></i></a></p><p class="control"><a class="button is-transparent is-large" target="_blank" rel="noopener" title="Attribution 4.0 International" href="https://creativecommons.org/licenses/by/4.0/"><i class="fab fa-creative-commons-by"></i></a></p><p class="control"><a class="button is-transparent is-large" target="_blank" rel="noopener" title="Download on GitHub" href="https://github.com/ppoffice/hexo-theme-icarus"><i class="fab fa-github"></i></a></p></div></div></div></div></footer><script src="https://cdn.jsdelivr.net/npm/jquery@3.3.1/dist/jquery.min.js"></script><script src="https://cdn.jsdelivr.net/npm/moment@2.22.2/min/moment-with-locales.min.js"></script><script src="https://cdn.jsdelivr.net/npm/clipboard@2.0.4/dist/clipboard.min.js" defer></script><script>moment.locale("zh-cn");</script><script>var IcarusThemeSettings = {
+            article: {
+                highlight: {
+                    clipboard: true,
+                    fold: 'unfolded'
+                }
+            }
+        };</script><script data-pjax src="/js/column.js"></script><a id="back-to-top" title="回到顶端" href="javascript:;"><i class="fas fa-chevron-up"></i></a><script data-pjax src="/js/back_to_top.js" defer></script><!--!--><!--!--><!--!--><script src="https://cdn.jsdelivr.net/npm/cookieconsent@3.1.1/build/cookieconsent.min.js" defer></script><script>window.addEventListener("load", () => {
+      window.cookieconsent.initialise({
+        type: "info",
+        theme: "edgeless",
+        static: false,
+        position: "bottom-left",
+        content: {
+          message: "此网站使用Cookie来改善您的体验。",
+          dismiss: "知道了！",
+          allow: "允许使用Cookie",
+          deny: "拒绝",
+          link: "了解更多",
+          policy: "Cookie政策",
+          href: "https://www.cookiesandyou.com/",
+        },
+        palette: {
+          popup: {
+            background: "#edeff5",
+            text: "#838391"
+          },
+          button: {
+            background: "#4b81e8"
+          },
+        },
+      });
+    });</script><script src="https://cdn.jsdelivr.net/npm/lightgallery@1.10.0/dist/js/lightgallery.min.js" defer></script><script src="https://cdn.jsdelivr.net/npm/justifiedGallery@3.8.1/dist/js/jquery.justifiedGallery.min.js" defer></script><script>window.addEventListener("load", () => {
+            if (typeof $.fn.lightGallery === 'function') {
+                $('.article').lightGallery({ selector: '.gallery-item' });
+            }
+            if (typeof $.fn.justifiedGallery === 'function') {
+                if ($('.justified-gallery > p > .gallery-item').length) {
+                    $('.justified-gallery > p > .gallery-item').unwrap();
+                }
+                $('.justified-gallery').justifiedGallery();
+            }
+        });</script><!--!--><!--!--><script src="https://cdn.jsdelivr.net/npm/pjax@0.2.8/pjax.min.js"></script><script src="/js/pjax.js"></script><!--!--><!--!--><!--!--><script data-pjax src="/js/main.js" defer></script><div class="searchbox"><div class="searchbox-container"><div class="searchbox-header"><div class="searchbox-input-container"><input class="searchbox-input" type="text" placeholder="想要查找什么..."></div><a class="searchbox-close" href="javascript:;">×</a></div><div class="searchbox-body"></div></div></div><script data-pjax src="/js/insight.js" defer></script><script data-pjax>document.addEventListener('DOMContentLoaded', function () {
+            loadInsight({"contentUrl":"/content.json"}, {"hint":"想要查找什么...","untitled":"(无标题)","posts":"文章","pages":"页面","categories":"分类","tags":"标签"});
+        });</script></body></html>
