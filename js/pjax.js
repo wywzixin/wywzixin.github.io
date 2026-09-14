@@ -7,7 +7,8 @@
             const Pjax = window.Pjax || function() {};
             pjax = new Pjax({
                 selectors: [
-                    '[data-pjax]',
+                    // 不要替换 <link>/<style>：卸掉 /css/default.css 会闪一帧裸 HTML
+                    '[data-pjax]:not(link):not(style)',
                     '.pjax-reload',
                     'head title',
                     '.columns',

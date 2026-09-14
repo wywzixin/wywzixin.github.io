@@ -1,0 +1,239 @@
+<!doctype html>
+<html lang="zh"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1"><meta><meta name="referrer" content="no-referrer"><title>北斗网格性能优化（一）：总体架构 - Hexo</title><link rel="manifest" href="/manifest.json"><meta name="application-name" content="Hexo"><meta name="msapplication-TileImage" content="/img/favicon.svg"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="Hexo"><meta name="apple-mobile-web-app-status-bar-style" content="default"><meta name="description" content="六个测试区域在 L7 下的理论总量是 70,986,328 个格子，而行预算上限只有 18 万。这篇把整条链路过一遍：GPU Instancing、DrawCommand、RTE、视锥剔除、L6&amp;#x2F;L7 分块、Worker 和 LRU 各自卡在哪一环。"><meta property="og:type" content="blog"><meta property="og:title" content="北斗网格性能优化（一）：总体架构"><meta property="og:url" content="https://wywzixin.github.io/beidou-grid-performance/01-architecture/"><meta property="og:site_name" content="Hexo"><meta property="og:description" content="六个测试区域在 L7 下的理论总量是 70,986,328 个格子，而行预算上限只有 18 万。这篇把整条链路过一遍：GPU Instancing、DrawCommand、RTE、视锥剔除、L6&amp;#x2F;L7 分块、Worker 和 LRU 各自卡在哪一环。"><meta property="og:locale" content="zh_CN"><meta property="og:image" content="https://wywzixin.github.io/img/beidou-grid-performance/l5-overview.jpg"><meta property="og:image" content="https://wywzixin.github.io/img/beidou-grid-performance/l7-close.jpg"><meta property="article:published_time" content="2026-09-12T02:07:00.000Z"><meta property="article:modified_time" content="2026-09-13T06:44:02.227Z"><meta property="article:author" content="wangyawei"><meta property="article:tag" content="性能优化"><meta property="article:tag" content="Cesium"><meta property="article:tag" content="北斗网格"><meta property="article:tag" content="架构设计"><meta property="twitter:card" content="summary"><meta property="twitter:image:src" content="https://wywzixin.github.io/img/beidou-grid-performance/l5-overview.jpg"><script type="application/ld+json">{"@context":"https://schema.org","@type":"BlogPosting","mainEntityOfPage":{"@type":"WebPage","@id":"https://wywzixin.github.io/beidou-grid-performance/01-architecture/"},"headline":"北斗网格性能优化（一）：总体架构","image":["https://wywzixin.github.io/img/beidou-grid-performance/l5-overview.jpg","https://wywzixin.github.io/img/beidou-grid-performance/l7-close.jpg"],"datePublished":"2026-09-12T02:07:00.000Z","dateModified":"2026-09-13T06:44:02.227Z","author":{"@type":"Person","name":"wangyawei"},"publisher":{"@type":"Organization","name":"Hexo","logo":{"@type":"ImageObject","url":"https://wywzixin.github.io/img/logo.svg"}},"description":"六个测试区域在 L7 下的理论总量是 70,986,328 个格子，而行预算上限只有 18 万。这篇把整条链路过一遍：GPU Instancing、DrawCommand、RTE、视锥剔除、L6&#x2F;L7 分块、Worker 和 LRU 各自卡在哪一环。"}</script><link rel="canonical" href="https://wywzixin.github.io/beidou-grid-performance/01-architecture/"><link rel="icon" href="/img/favicon.svg"><style>html,body{background:#f7f7f7}</style><link rel="stylesheet" href="https://use.fontawesome.com/releases/v6.0.0/css/all.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js@11.7.0/styles/atom-one-dark.css"><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Ubuntu:wght@400;600&amp;family=Source+Code+Pro"><link rel="stylesheet" href="/css/default.css"><!--!--><!--!--><!--!--><!--!--><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/cookieconsent@3.1.1/build/cookieconsent.min.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/lightgallery@1.10.0/dist/css/lightgallery.min.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/justifiedGallery@3.8.1/dist/css/justifiedGallery.min.css"><!--!--><!--!--><!--!--><style>.pace{-webkit-pointer-events:none;pointer-events:none;-webkit-user-select:none;-moz-user-select:none;user-select:none}.pace-inactive{display:none}.pace .pace-progress{background:#3273dc;position:fixed;z-index:2000;top:0;right:100%;width:100%;height:2px}</style><script src="https://cdn.jsdelivr.net/npm/pace-js@1.2.4/pace.min.js"></script><!--!--><!--!--><!-- hexo injector head_end start --><script>
+  (function () {
+      function switchTab() {
+          if (!location.hash) {
+            return;
+          }
+
+          const id = '#' + CSS.escape(location.hash.substring(1));
+          const $tabMenu = document.querySelector(`.tabs a[href="${id}"]`);
+          if (!$tabMenu) {
+            return;
+          }
+
+          const $tabMenuContainer = $tabMenu.parentElement.parentElement;
+          Array.from($tabMenuContainer.children).forEach($menu => $menu.classList.remove('is-active'));
+          Array.from($tabMenuContainer.querySelectorAll('a'))
+              .map($menu => document.getElementById($menu.getAttribute("href").substring(1)))
+              .forEach($content => $content.classList.add('is-hidden'));
+
+          if ($tabMenu) {
+              $tabMenu.parentElement.classList.add('is-active');
+          }
+          const $activeTab = document.querySelector(id);
+          if ($activeTab) {
+              $activeTab.classList.remove('is-hidden');
+          }
+      }
+      switchTab();
+      window.addEventListener('hashchange', switchTab, false);
+  })();
+  </script><!-- hexo injector head_end end --><meta name="generator" content="Hexo 7.3.0"></head><body class="is-3-column"><nav class="navbar navbar-main"><div class="container navbar-container"><div class="navbar-brand justify-content-center"><a class="navbar-item navbar-logo" href="/"><img src="/img/logo.svg" alt="Hexo" height="28"></a></div><div class="navbar-menu"><div class="navbar-start"><a class="navbar-item" href="/">首页</a><a class="navbar-item" href="/archives">归档</a><a class="navbar-item" href="/categories">分类</a><a class="navbar-item" href="/tags">标签</a><a class="navbar-item" href="/about">关于</a></div><div class="navbar-end"><a class="navbar-item" target="_blank" rel="noopener" title="Download on GitHub" href="https://github.com/ppoffice/hexo-theme-icarus"><i class="fab fa-github"></i></a><a class="navbar-item search" title="搜索" href="javascript:;"><i class="fas fa-search"></i></a></div></div></div></nav><section class="section"><div class="container"><div class="columns"><div class="column order-2 column-main is-8-tablet is-8-desktop is-6-widescreen"><div class="card"><article class="card-content article" role="article"><div class="article-meta is-size-7 is-uppercase level is-mobile"><div class="level-left"><span class="level-item"><time dateTime="2026-09-12T02:07:00.000Z" title="2026/9/12 10:07:00">2026-09-12</time>发表</span><span class="level-item"><time dateTime="2026-09-13T06:44:02.227Z" title="2026/9/13 14:44:02">2026-09-13</time>更新</span><span class="level-item"><a class="link-muted" href="/categories/%E5%8C%97%E6%96%97%E7%BD%91%E6%A0%BC%E6%80%A7%E8%83%BD%E4%BC%98%E5%8C%96/">北斗网格性能优化</a></span><span class="level-item">38 分钟读完 (大约5682个字)</span></div></div><h1 class="title is-3 is-size-4-mobile">北斗网格性能优化（一）：总体架构</h1><div class="content"><p><strong>背景：</strong> 我国正在发展低空经济，我们做的是飞行服务（飞服）项目，要把低空空域划成能计算、能查询、能下发的单元。选的是北斗网格：按经纬度和高度把地理空间编码成一个个三维盒子，一个编码对应一块确定的空间范围。在 Cesium 里加载 <strong>L5、L6、L7</strong> 三档网格，给一个多边形和一段高度范围，就能把落在里面的格子填出来，得到一块禁飞区或管控区。三档的水平格边长依次约 <strong>123.7、61.8、7.73 米</strong>：比 L5 粗的看不出区域形状，比 L7 细的在这个业务尺度上没有意义。</p>
+<p><strong>原因：</strong> 麻烦来自多出来的那个方向。二维地图只要横向铺满，三维还要按高度一层层堆；而且高度步长不是独立参数，它由水平步长推出来，水平细一倍、高度也跟着细一倍。L6 到 L7 每边 8 倍，三个方向乘起来就是 <strong>512 倍</strong> —— 换一档不是画得密一点，是同一片空间里的格子数量直接乘 512。</p>
+<p>压测示例用了六个真实的天津、北京管控区，它们在 L7 下的理论总量是 <strong>70,986,328</strong> 个格子；而视口配的活动预算上限是 <strong>180,000</strong>，也就是任何一帧最多允许约 <strong>0.25%</strong> 的格子存在。剩下那 99.75% 必须永远不落地 —— 因为瓶颈不在光栅化，在生成：这些格子还没开始画，光实例矩阵和颜色就是 7000 万 × 80 字节 &#x3D; <strong>5.68 GB</strong>。</p>
+<span id="more"></span>
+
+<p>所以整套方案的目标不是把格子画得更快，而是让每一刻真正存在的，只有当前这一眼需要的十几万个。</p>
+<p><strong>用到的技术：</strong> <strong>GPU Instancing</strong> 共享一份盒子几何，按实例画一批格子；<strong>自定义 DrawCommand</strong> 把填充和线框接进 Cesium；<strong>RTE</strong> 在近景保住米级精度；<strong>视锥剔除</strong> 加上距离选层，挡住视野外和够不着的细节；<strong>L6 按工作量分块</strong>，<strong>L7 再切水平微块和高度切片</strong>，把单次任务压到大约 8192 个实例；<strong>Web Worker</strong> 把生成搬出主线程；<strong>LRU 缓存</strong> 让刚看过的块能直接复用。</p>
+<p>后面六篇会拆开写。这篇先把整条链路过一遍，懒得往下翻的话，看完这篇也对每项技术有个印象。</p>
+<h2 id="数量是怎么爆的"><a href="#数量是怎么爆的" class="headerlink" title="数量是怎么爆的"></a>数量是怎么爆的</h2><p>二维地图只算横向，三维网格多了一个可以自由伸缩的高度方向，数量按体积走。</p>
+<p>L6 的经纬度步长是 2 角秒，L7 是 0.25 角秒，水平每边细化 8 倍。高度步长不是独立的参数，而是从水平步长推出来的：</p>
+<p><strong>高度步长 &#x3D; 水平经度步长 × 40075017 &#x2F; 360。</strong></p>
+<p>所以水平变细时高度也跟着细。L6 到 L7，水平 8 倍、高度 8 倍，三个方向乘起来：</p>
+<p><strong>8 × 8 × 8 &#x3D; 512。</strong></p>
+<p>「再细一档」不是让同样的盒子画得密一点，而是让同一片空间里的格子数量直接乘 512。六个区域在 L7 下的理论量：</p>
+<table>
+<thead>
+<tr>
+<th>区域</th>
+<th>高度范围</th>
+<th>L7 列×行×层</th>
+<th align="right">理论网格数</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>南开大学左侧禁飞区</td>
+<td>0–2000 m</td>
+<td>793×263×260</td>
+<td align="right">37,232,804</td>
+</tr>
+<tr>
+<td>南开大学左侧限高区</td>
+<td>0–600 m</td>
+<td>670×402×79</td>
+<td align="right">18,017,471</td>
+</tr>
+<tr>
+<td>天津医疗保障局禁飞区</td>
+<td>0–2000 m</td>
+<td>212×373×260</td>
+<td align="right">14,161,255</td>
+</tr>
+<tr>
+<td>天津通信管理局禁飞区</td>
+<td>6–200 m</td>
+<td>303×203×27</td>
+<td align="right">579,297</td>
+</tr>
+<tr>
+<td>天津-禁飞区01</td>
+<td>0–3000 m</td>
+<td>36×60×390</td>
+<td align="right">509,889</td>
+</tr>
+<tr>
+<td>南开大学限高区</td>
+<td>100–200 m</td>
+<td>182×197×14</td>
+<td align="right">485,612</td>
+</tr>
+<tr>
+<td><strong>合计</strong></td>
+<td></td>
+<td></td>
+<td align="right"><strong>70,986,328</strong></td>
+</tr>
+</tbody></table>
+<p>这七千万不是数出来的，是估出来的：<strong>列数 × 行数 × 层数 × 有效面积比例</strong>，最后一项是「多边形实际面积 ÷ 包围盒面积」，扣掉包围盒里空出来的部分。表里第一个区域的 37,232,804 是示例写死的枚举值（<code>KNOWN_GRID_COUNTS</code>），其余五个是运行时估算的 —— 用同一套算式去估算第一个区域会得到 37,337,939，<strong>和写死值只差 0.28%</strong>。这个精度足以支撑「先估算、再决定要不要生成」的调度策略，后面会看到整个调度器就是靠估算在生成之前做取舍的。</p>
+<p>有一点要提前说清：估算函数在三个轴上都用了 <code>ceil(跨度 / 步长) + 1</code>，这是偏保守的高估（表里的列数、行数、层数都是这么来的）；而引擎实际切片时用的是 <code>floor(...) + 1</code>，比估算少一个。两者的差别在第六篇会具体到那一层上。</p>
+<p>看这张表，最值得注意的一对是最后两行。<strong>南开大学限高区</strong>平面覆盖 182×197 格，但高度只有 100–200 米，才 14 层；<strong>天津-禁飞区01</strong> 平面只有 36×60 格，比前者小 16 倍，但高度拉到 3000 米，要切 390 层。结果后者总量反而更多：509,889 对 485,612。高度范围是业务给的，引擎没法替你收敛 —— 一块地图上几乎看不见的地皮，只要高度拉得够高，总量就能追回来。</p>
+<blockquote>
+<p>一个口径说明：这一系列的数字都来自压测示例 <code>example/only3d/stressTestCustomZonesL7Poc(1).html</code>，不是源码默认值。示例对 <code>viewportGrid</code> 做了整体覆盖（比如 <code>maxActiveGrids</code> 默认 150,000、示例配 180,000；<code>lodThresholds</code> 默认最远一档是「不加载」、示例配到 L4）。后面几篇提到「示例配置」时，指的都是这个示例。</p>
+</blockquote>
+<p>一次性生成会同时压住好几段：编码、多边形裁剪、矩阵打包、主线程接结果、GPU 上传，最后每帧还要画。所以后面所有技术，都是在回答同一件事：<strong>不要让这七千万同时存在。</strong></p>
+<p>高空看过去，活动量可以压到两万左右，大部分结果躺在缓存里：</p>
+<p><img src="/img/beidou-grid-performance/l5-overview.jpg" alt="北斗网格 L5 总览：活动数据较少，大部分已加载结果留在缓存"></p>
+<p><em>实际示例截图，画布 1600×1000，已有缓存的会话。此时活动网格 20,708 个，分布在 10 个 L5 Tile；223,038 个网格处于缓存中。面板「可见网格」统计的是参与活动管理的实例数，不等于屏幕上逐个可见的格子数。</em></p>
+<h2 id="GPU-Instancing"><a href="#GPU-Instancing" class="headerlink" title="GPU Instancing"></a>GPU Instancing</h2><p><strong>GPU Instancing</strong> 是一种批量绘制技术：多个物体共享同一份几何，每个物体只提供自己的变换、颜色等实例属性，GPU 用这一份几何按实例属性重复绘制，一批物体对应一次绘制提交。Three.js 的 <code>InstancedMesh</code> 就是这项技术。</p>
+<p>当前视口里可能有十几万个网格盒子，它们的几何完全相同，差异只在位置、尺寸和颜色。如果每个盒子是一个 Cesium Entity 或一个 Mesh，对象数量就等于格子数量，引擎要按对象分别组织绘制，提交次数随格子数量线性增长。</p>
+<p>所以这些盒子用 Instancing 画。项目按 Tile 分组：一块内的格子共享一份中心在原点的单位立方体几何，每个格子提供一份变换矩阵和一份颜色，整块做一次实例化绘制。不同块分开提交，因为剔除、显示和缓存都以块为单位。</p>
+<p>它减少的是绘制提交次数和重复的几何存储，<strong>不减少要画的实例数</strong> —— GPU 仍要逐实例处理顶点变换。实例数由后面的视锥剔除、层级选择和活动预算控制。</p>
+<h2 id="自定义-DrawCommand"><a href="#自定义-DrawCommand" class="headerlink" title="自定义 DrawCommand"></a>自定义 DrawCommand</h2><p><strong>DrawCommand</strong> 是 Cesium 对一次绘制任务的描述，指定用哪份几何、哪些顶点属性和实例属性、哪个着色器，以及深度测试、颜色混合等渲染状态。Cesium 每帧执行的就是一个 DrawCommand 列表；Entity 和 Primitive 最终也会被引擎转换成 DrawCommand。</p>
+<p>Instancing 解决的是「怎么批量画相同几何」，要在 Cesium 里用上它，还得自己决定三件事：实例矩阵怎么按 Tile 上传、着色器里怎么用相对相机的坐标（就是后面要讲的 RTE）、填充面和线框能不能分开开关。这三件默认路径都给不了 —— Entity 面向少量独立物体，内置 Primitive 的坐标变换和渲染状态按引擎默认走。所以这里直接创建 DrawCommand 提交给渲染循环。</p>
+<p>每个 Tile 最多两个命令：一个用三角形索引画盒子的六个面，走半透明 pass；一个用 12 条边的索引画棱，<code>PrimitiveType.LINES</code>。<strong>两条命令共用同一批 instance buffer</strong>，只有索引缓冲和着色器不同，所以只显示线框时不必重传任何实例数据。</p>
+<p>线框还有一个容易被忽略的细节：它带一个随距离淡出的着色器 LOD。<code>BeiDouGridPrimitive</code> 里有 <code>u_visibleDistance</code>（视口侧传 10000），远处的线框会逐渐变暗，免得密集边线在远景糊成一片噪声。</p>
+<h2 id="RTE"><a href="#RTE" class="headerlink" title="RTE"></a>RTE</h2><p><strong>RTE（Relative-To-Eye）</strong> 处理的是大世界坐标的浮点精度。Cesium 用 ECEF 地心坐标，单位是米，地表附近的分量达到几百万。32 位浮点在 640 万这个量级上，相邻两个可表示数大约相差 0.5 米 —— 而 L7 的格子才 7.73 米。0.5 米的舍入，在近景就是边线抖动、相邻块对不齐。</p>
+<p>关键不在于用什么技巧，而在于<strong>把「大数减大数」挪到 CPU 的双精度里做</strong>。顺序错了就白搭：如果先转成 Float32 再相减，低位在相减之前就已经丢了，后面提高片元着色器精度也救不回来。</p>
+<p>项目给每个 Tile 选一个参考中心，块内格子的实例矩阵只存相对该中心的 ENU 局部坐标（东、北、上），不存 ECEF 平移。CPU 每帧用双精度算「参考中心 − 相机位置」，作为 uniform 传给着色器；着色器只乘 <code>czm_viewRotation</code> 这个纯旋转矩阵 —— 平移已经在 CPU 那边减掉了，再乘一次完整视图矩阵会把相机位置减两遍。</p>
+<p>好处是相机移动时只需要更新一个 vec3。一个 L7 切片有 8192 个实例，重算并上传 8192 份矩阵和更新一个 uniform，是完全不同的工作量。</p>
+<p>RTE 的收益随块的大小递减：块跨得越大，块内的局部坐标本身越大，就越接近原来的问题。这也是分块要同时服务调度和精度的原因。</p>
+<h2 id="视锥剔除"><a href="#视锥剔除" class="headerlink" title="视锥剔除"></a>视锥剔除</h2><p><strong>视锥</strong>是透视相机的可见空间，由左、右、上、下、近、远六个平面围成。<strong>视锥剔除</strong>就是用简单包围体代替一整块数据的复杂几何，去和这六个平面比。</p>
+<p>这是整条链路里<strong>唯一一个作用在生成之前</strong>的技术。GPU 自带的裁剪只作用于已经提交的图元 —— 等走到那一步，编码、矩阵计算、缓冲区上传都已经做完了。</p>
+<p>项目分两层测。先用区域的 OBB（有向包围盒）和视锥比：完全在外就跳过整个区域，完全在内就直接接受它的所有子块、不必逐个再测，相交时才逐个测 Tile 的包围体。区域优先用 OBB 是因为地表区域往往狭长又倾斜，包围球会留出大量空白，视锥稍微碰到球就得继续往下查。</p>
+<p><code>GridTileIndex.ts</code> 里构造 OBB 用的是 <code>Cesium.OrientedBoundingBox.fromRectangle(rectangle, minHeight, maxHeight)</code>，注释写明这么做的理由：为了正确剔除「水平方向在视锥外、但相机位于其球形包围体内」的 Tile。相机贴近地表时，包围球的球心可能落到地表以下，球体把相机整个包进去，于是永远和视锥相交 —— 这一条只有真的在地上跑过才想得到。检查本身也做了节流，间隔 <code>DEFAULT_FRUSTUM_CHECK_INTERVAL = 200</code> 毫秒。</p>
+<p>进入视锥的块还要决定用哪一档网格。项目用相机到 Tile 中心的<strong>三维距离</strong>选层级，而不是只用相机高度，所以面前的块和几公里外的块可以不是同一档：</p>
+<table>
+<thead>
+<tr>
+<th>相机到 Tile 中心的距离</th>
+<th align="right">层级</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>不超过 1500 米</td>
+<td align="right">L7</td>
+</tr>
+<tr>
+<td>不超过 6000 米</td>
+<td align="right">L6</td>
+</tr>
+<tr>
+<td>不超过 50000 米</td>
+<td align="right">L5</td>
+</tr>
+<tr>
+<td>更远</td>
+<td align="right">L4（示例中的配置）</td>
+</tr>
+</tbody></table>
+<p>以块中心为参考，计算简单。代价是块中心越过阈值时整块一起切换，块边缘的格子实际距离会有偏差。</p>
+<p>视锥剔除减少的是视野外的生成和绘制，它<strong>不处理遮挡</strong> —— 被楼房、地形挡住的 Tile 仍然在视锥内，仍然要生成。深度测试只决定像素的前后关系，不会替主线程取消任务。</p>
+<h2 id="L6-分块"><a href="#L6-分块" class="headerlink" title="L6 分块"></a>L6 分块</h2><p><strong>空间分块</strong>把一个大区域划成若干空间块（Tile），每块可以独立生成、绘制、隐藏和回收。Instancing 在块内批量绘制，视锥剔除按块测试，Worker 按块计算，缓存按块复用。</p>
+<p>如果把一个区域的全部 L6 格子放进同一个实例集合，包围体就覆盖整片区域，只要一角进入视锥，其余数据也会被带上；相机移到另一侧时也没法只替换相关部分。固定边长的分块同样不合适 —— 区域有的接近方形、有的细长，高度层数也不同，同一套固定尺寸会让有的块过大、有的过碎。</p>
+<p>所以 L6 按区域预估工作量反推水平块大小。先估算包围盒在 L6 下的列数、行数和高度层数，乘一个有效面积比例得到预估总量；以每块约 <strong>12000</strong> 个格子为目标算出期望块数，<strong>钳制在 1 到 64 之间</strong>，再开方得到每边的 L6 单元数，<strong>最小 8</strong>。有效面积比例本身也钳在 <strong>0.25 到 1</strong>，避免很细长的区域把估算压得过低。</p>
+<p>12000 这个目标对应「一次 Worker 任务」和「一次实例化绘制」希望达到的规模：再大则单次峰值过高，再小则任务和绘制命令过多。</p>
+<p>L6 只切水平方向，高度一次覆盖该区域的完整范围。这套块不适用于 L7 —— L7 在同样的水平范围内细了两个数量级，沿用它会让单次任务过大。</p>
+<h2 id="L7-分块"><a href="#L7-分块" class="headerlink" title="L7 分块"></a>L7 分块</h2><p>L6 到 L7 是 512 倍，所以 L7 要在水平和高度两个方向继续切。</p>
+<p><strong>水平方向</strong>，一个微块每边跨越 2 个 L6 步长。L6 到 L7 每边是 8 个单元，所以一个微块是 <strong>16×16 &#x3D; 256</strong> 根竖直方向的网格柱。微块按固定经纬度间隔对齐，这样相邻的两个基础块看到同一片空间时会算出相同的行列编号，缓存、去重、重新加载都用同一个键。</p>
+<p><strong>高度方向</strong>，每根柱子按最多 <strong>32</strong> 个采样层分成一片。满片规模 16×16×32 &#x3D; <strong>8192</strong> 个实例，正好对应一次实例化绘制希望处理的数量。</p>
+<p>以高度 0 到 2000 米、L7 高度步长 7.730520 米为例：总采样层数 <code>floor(2000 / 7.730520) + 1 = 259</code>，每片最多 32 层，需要 <code>ceil(259 / 32) = 9</code> 片 —— 前 8 片各 32 层，最后一片 3 层。相机在低空时，只需要加载附近的高度片，不必一次生成整根柱子。</p>
+<p>相邻微块共用边界上的格子只归属一侧，避免重复实例。一块 L7 数据的标识由「区域、层级、微块行列、高度片编号」组成，Worker、活动集合和缓存都用这个标识。</p>
+<p>L7 分块让细网格可以按水平和高度分别排队、占用预算和进入缓存，但它不取消活动上限 —— 近景 L7 仍受预算限制，视野中可能同时存在尚未细化的 L6：</p>
+<p><img src="/img/beidou-grid-performance/l7-close.jpg" alt="近距离北斗网格：L7 细网格与 L6 网格共同参与活动管理"></p>
+<h2 id="Web-Worker"><a href="#Web-Worker" class="headerlink" title="Web Worker"></a>Web Worker</h2><p><strong>Web Worker</strong> 是浏览器里独立于页面主线程的 JavaScript 执行环境，主线程通过消息派任务、收结果；Worker 不能访问 DOM，也不能直接用 Cesium 的 WebGL 上下文。</p>
+<p>已加载的网格可以画得很流畅，但相机进入没生成过的区域时主线程仍会卡顿 —— 网格生成是编码、裁剪、矩阵计算连成的 CPU 循环，占着主线程期间，相机拖动和下一帧提交都被推迟。把它放进 <code>Promise.then</code> 没用，那还是在主线程。</p>
+<p><strong>Transferable</strong> 用来在线程之间转移 <code>ArrayBuffer</code> 的所有权：缓冲区不复制，发送方失去访问权，接收方直接拿到这块内存。Worker 返回的四组类型化数组 —— 实例矩阵、颜色、网格索引、占用标记 —— 就是这么移交的。</p>
+<p>项目只用一个 Worker（<code>workerCount: 1</code>，实现固定单 Worker），主线程前面配一个按距离排序的队列。用单 Worker 是为了避免两个副作用：每个 Tile 建一个 Worker 会有大量线程启动开销；多个任务同时完成会让主线程在同一时刻收到一大批数组并集中上传 GPU。队列这边有几道处理：同一时刻只发一个任务，等结果回来再发下一个；入队时按距离排序并去重；每轮更新把已经不再需要的任务剪掉；超过上限时从<strong>队尾</strong>丢 —— 也就是丢掉最远的那个。</p>
+<p>它把生成搬出主线程，<strong>不减少计算量</strong>。GPU 上传仍然在主线程完成，Transferable 只免掉线程之间的复制，不会把数据直接变成显存。</p>
+<h2 id="LRU-缓存"><a href="#LRU-缓存" class="headerlink" title="LRU 缓存"></a>LRU 缓存</h2><p><strong>LRU（Least Recently Used）</strong> 是一种缓存淘汰策略：容量不足时优先删除最久没被使用的数据，依据的是最近一次使用时间，而不是累计访问次数。</p>
+<p>地图浏览有很强的时间局部性 —— 刚离开的地方常常很快又要看。如果块一离开视口就销毁，相机转回来就得重新生成、传输、上传一遍。</p>
+<p>只限块数不够。一个满的 L7 高度片有几千个实例，区域边缘的块可能只有几十个，同样 100 个块，内存占用能差一个数量级；反过来只限网格总数，又会留下一大堆很小的块，白白增加对象和绘制命令开销。所以缓存同时使用<strong>块数上限和网格数上限</strong>，并且<strong>按层级分别限额</strong>，避免 L7 占满全部缓存后，切回远景时没有 L5、L6 可以复用。</p>
+<p>再次需要某块时，缓存命中就直接恢复显示，已经创建的 GPU 资源继续用。超出任一上限时按 <code>lastUsedAt</code> 找最旧的淘汰 —— 这里是 O(K) 扫描，几百个块的规模足够直观，也方便结合层级和数量一起判。</p>
+<p>淘汰必须真正释放该块的实例缓冲区。多个 Tile 共用的单位立方体几何用<strong>引用计数</strong>管理：一个块开始使用时加一，退出时减一，最后一个使用者退出才销毁，并顺手把 <code>vertexArrayDestroyable</code> 设成 false 防止顶点数组被误删。</p>
+<p>缓存中的块仍然占用内存 —— 隐藏一个块不会自动释放 GPU 资源，只有走到淘汰路径上的显式释放才真正归还。这正是缓存能变快的原因：已经做过的准备工作还在。也正因为如此，估内存要按网格数而不是块数 —— 块数只是规模指标，真实字节数还得算上编码、辅助数组和拾取资源。</p>
+<h2 id="处理顺序"><a href="#处理顺序" class="headerlink" title="处理顺序"></a>处理顺序</h2><p>相机变化之后，各项技术按下面的顺序工作：</p>
+<ol>
+<li>用视锥测试区域和 Tile，用相机到块中心的距离选 L5、L6 或 L7。</li>
+<li>L6 按工作量划分水平块；L7 再划分水平微块和高度切片。</li>
+<li>按活动预算截取候选，近处优先；相机移动期间暂缓新增 L7。</li>
+<li>缓存命中的块直接恢复显示。</li>
+<li>未命中的块进入 Worker 队列，生成实例数组。</li>
+<li>主线程用实例数据创建 DrawCommand，着色器按 RTE 计算相对相机的位置。</li>
+<li>离开视锥的块进入 LRU 缓存，超出缓存预算后释放资源。</li>
+</ol>
+<p>区域理论网格可以达到千万级。某一帧真正处于活动状态的，是预算限制下的十几万个实例。后面六篇按 Instancing 与 DrawCommand、LOD 与视锥、Worker、RTE、L7 切片、Tile 与缓存的顺序分别展开。</p>
+<h2 id="系列阅读"><a href="#系列阅读" class="headerlink" title="系列阅读"></a>系列阅读</h2><ol>
+<li><strong>总体架构</strong></li>
+<li><a href="/beidou-grid-performance/02-instancing-drawcommand/">GPU Instancing 与 DrawCommand</a></li>
+<li><a href="/beidou-grid-performance/03-lod-culling/">LOD 与视锥剔除</a></li>
+<li><a href="/beidou-grid-performance/04-worker-transferable/">Web Worker 与 Transferable</a></li>
+<li><a href="/beidou-grid-performance/05-rte/">RTE 与局部坐标系</a></li>
+<li><a href="/beidou-grid-performance/06-l7-slicing/">L7 的水平微块与高度切片</a></li>
+<li><a href="/beidou-grid-performance/07-tiles-cache/">Tile、缓存与资源回收</a></li>
+</ol>
+</div><div class="article-licensing box"><div class="licensing-title"><p>北斗网格性能优化（一）：总体架构</p><p><a href="https://wywzixin.github.io/beidou-grid-performance/01-architecture/">https://wywzixin.github.io/beidou-grid-performance/01-architecture/</a></p></div><div class="licensing-meta level is-mobile"><div class="level-left"><div class="level-item is-narrow"><div><h6>作者</h6><p>wangyawei</p></div></div><div class="level-item is-narrow"><div><h6>发布于</h6><p>2026-09-12</p></div></div><div class="level-item is-narrow"><div><h6>更新于</h6><p>2026-09-13</p></div></div><div class="level-item is-narrow"><div><h6>许可协议</h6><p><a class="icons" rel="noopener" target="_blank" title="Creative Commons" href="https://creativecommons.org/"><i class="icon fab fa-creative-commons"></i></a><a class="icons" rel="noopener" target="_blank" title="Attribution" href="https://creativecommons.org/licenses/by/4.0/"><i class="icon fab fa-creative-commons-by"></i></a><a class="icons" rel="noopener" target="_blank" title="Noncommercial" href="https://creativecommons.org/licenses/by-nc/4.0/"><i class="icon fab fa-creative-commons-nc"></i></a></p></div></div></div></div></div><div class="article-tags is-size-7 mb-4"><span class="mr-2">#</span><a class="link-muted mr-2" rel="tag" href="/tags/%E6%80%A7%E8%83%BD%E4%BC%98%E5%8C%96/">性能优化</a><a class="link-muted mr-2" rel="tag" href="/tags/Cesium/">Cesium</a><a class="link-muted mr-2" rel="tag" href="/tags/%E5%8C%97%E6%96%97%E7%BD%91%E6%A0%BC/">北斗网格</a><a class="link-muted mr-2" rel="tag" href="/tags/%E6%9E%B6%E6%9E%84%E8%AE%BE%E8%AE%A1/">架构设计</a></div><!--!--></article></div><!--!--><nav class="post-navigation mt-4 level is-mobile"><div class="level-start"><a class="article-nav-prev level level-item link-muted" href="/2026/09/14/threejs%E5%AE%9E%E4%BE%8B%E5%8C%96%E6%B8%B2%E6%9F%93InstancedMesh/"><i class="level-item fas fa-chevron-left"></i><span class="level-item">Three.js InstancedMesh 实例化渲染</span></a></div><div class="level-end"><a class="article-nav-next level level-item link-muted" href="/beidou-grid-performance/02-instancing-drawcommand/"><span class="level-item">北斗网格性能优化（二）：GPU Instancing 与 DrawCommand</span><i class="level-item fas fa-chevron-right"></i></a></div></nav><!--!--></div><div class="column column-left is-4-tablet is-4-desktop is-3-widescreen  order-1"><div class="card widget" data-type="profile"><div class="card-content"><nav class="level"><div class="level-item has-text-centered flex-shrink-1"><div><figure class="image is-128x128 mx-auto mb-2"><img class="avatar is-rounded" src="/img/avatar.svg" alt="王亚伟"></figure><p class="title is-size-4 is-block" style="line-height:inherit;">王亚伟</p><p class="is-size-6 is-block">3D · AI</p><p class="is-size-6 is-flex justify-content-center"><i class="fas fa-map-marker-alt mr-1"></i><span>北京</span></p></div></div></nav><nav class="level is-mobile"><div class="level-item has-text-centered is-marginless"><div><p class="heading">文章</p><a href="/archives/"><p class="title">43</p></a></div></div><div class="level-item has-text-centered is-marginless"><div><p class="heading">分类</p><a href="/categories/"><p class="title">9</p></a></div></div><div class="level-item has-text-centered is-marginless"><div><p class="heading">标签</p><a href="/tags/"><p class="title">28</p></a></div></div></nav><div class="level"><a class="level-item button is-primary is-rounded" href="https://github.com/wywzixin" target="_blank" rel="me noopener">关注我</a></div><div class="level is-mobile is-multiline"><a class="level-item button is-transparent is-marginless" target="_blank" rel="me noopener" title="Github" href="https://github.com/wywzixin"><i class="fab fa-github"></i></a><a class="level-item button is-transparent is-marginless" target="_blank" rel="me noopener" title="Facebook" href="https://facebook.com"><i class="fab fa-facebook"></i></a><a class="level-item button is-transparent is-marginless" target="_blank" rel="me noopener" title="Twitter" href="https://twitter.com"><i class="fab fa-twitter"></i></a><a class="level-item button is-transparent is-marginless" target="_blank" rel="me noopener" title="Dribbble" href="https://dribbble.com"><i class="fab fa-dribbble"></i></a><a class="level-item button is-transparent is-marginless" target="_blank" rel="me noopener" title="RSS" href="/"><i class="fas fa-rss"></i></a></div></div></div><!--!--><div class="card widget" data-type="links"><div class="card-content"><div class="menu"><h3 class="menu-label">链接</h3><ul class="menu-list"><li><a class="level is-mobile" href="https://hexo.io" target="_blank" rel="noopener"><span class="level-left"><span class="level-item">Hexo</span></span><span class="level-right"><span class="level-item tag">hexo.io</span></span></a></li><li><a class="level is-mobile" href="https://bulma.io" target="_blank" rel="noopener"><span class="level-left"><span class="level-item">Bulma</span></span><span class="level-right"><span class="level-item tag">bulma.io</span></span></a></li></ul></div></div></div><div class="card widget" data-type="categories"><div class="card-content"><div class="menu"><h3 class="menu-label">分类</h3><ul class="menu-list"><li><a class="level is-mobile" href="/categories/agent/"><span class="level-start"><span class="level-item">agent</span></span><span class="level-end"><span class="level-item tag">1</span></span></a></li><li><a class="level is-mobile" href="/categories/cesium/"><span class="level-start"><span class="level-item">cesium</span></span><span class="level-end"><span class="level-item tag">24</span></span></a></li><li><a class="level is-mobile" href="/categories/claude-code/"><span class="level-start"><span class="level-item">claude code</span></span><span class="level-end"><span class="level-item tag">2</span></span></a></li><li><a class="level is-mobile" href="/categories/python/"><span class="level-start"><span class="level-item">python</span></span><span class="level-end"><span class="level-item tag">1</span></span></a></li><li><a class="level is-mobile" href="/categories/threejs/"><span class="level-start"><span class="level-item">threejs</span></span><span class="level-end"><span class="level-item tag">5</span></span></a></li><li><a class="level is-mobile" href="/categories/%E5%8C%97%E6%96%97%E7%BD%91%E6%A0%BC%E6%80%A7%E8%83%BD%E4%BC%98%E5%8C%96/"><span class="level-start"><span class="level-item">北斗网格性能优化</span></span><span class="level-end"><span class="level-item tag">7</span></span></a></li><li><a class="level is-mobile" href="/categories/%E5%9B%BE%E5%BD%A2%E5%AD%A6/"><span class="level-start"><span class="level-item">图形学</span></span><span class="level-end"><span class="level-item tag">1</span></span></a></li><li><a class="level is-mobile" href="/categories/%E5%A4%A7%E6%A8%A1%E5%9E%8B/"><span class="level-start"><span class="level-item">大模型</span></span><span class="level-end"><span class="level-item tag">1</span></span></a></li><li><a class="level is-mobile" href="/categories/%E6%80%A7%E8%83%BD%E4%BC%98%E5%8C%96/"><span class="level-start"><span class="level-item">性能优化</span></span><span class="level-end"><span class="level-item tag">1</span></span></a></li></ul></div></div></div><div class="card widget" data-type="tags"><div class="card-content"><div class="menu"><h3 class="menu-label">标签</h3><div class="field is-grouped is-grouped-multiline"><div class="control"><a class="tags has-addons" href="/tags/Cesium/"><span class="tag">Cesium</span><span class="tag">7</span></a></div><div class="control"><a class="tags has-addons" href="/tags/DrawCommand/"><span class="tag">DrawCommand</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/ENU/"><span class="tag">ENU</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/GPU-Instancing/"><span class="tag">GPU Instancing</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/L6/"><span class="tag">L6</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/L7/"><span class="tag">L7</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/LOD/"><span class="tag">LOD</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/LRU/"><span class="tag">LRU</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/RTE/"><span class="tag">RTE</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/Shader/"><span class="tag">Shader</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/Transferable/"><span class="tag">Transferable</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/Web-Worker/"><span class="tag">Web Worker</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/WebGL/"><span class="tag">WebGL</span><span class="tag">2</span></a></div><div class="control"><a class="tags has-addons" href="/tags/agent/"><span class="tag">agent</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/cesium/"><span class="tag">cesium</span><span class="tag">24</span></a></div><div class="control"><a class="tags has-addons" href="/tags/claude-code/"><span class="tag">claude code</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/python/"><span class="tag">python</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/threejs/"><span class="tag">threejs</span><span class="tag">5</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E5%86%85%E5%AD%98%E7%AE%A1%E7%90%86/"><span class="tag">内存管理</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E5%8C%97%E6%96%97%E7%BD%91%E6%A0%BC/"><span class="tag">北斗网格</span><span class="tag">7</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E5%9B%BE%E5%BD%A2%E5%AD%A6/"><span class="tag">图形学</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E5%A4%A7%E6%A8%A1%E5%9E%8B/"><span class="tag">大模型</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E6%80%A7%E8%83%BD%E4%BC%98%E5%8C%96/"><span class="tag">性能优化</span><span class="tag">13</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E6%9E%B6%E6%9E%84%E8%AE%BE%E8%AE%A1/"><span class="tag">架构设计</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E7%A9%BA%E9%97%B4%E5%88%86%E5%9D%97/"><span class="tag">空间分块</span><span class="tag">2</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E7%BC%93%E5%AD%98/"><span class="tag">缓存</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E8%A7%86%E9%94%A5%E5%89%94%E9%99%A4/"><span class="tag">视锥剔除</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/%E9%AB%98%E5%BA%A6%E5%88%87%E7%89%87/"><span class="tag">高度切片</span><span class="tag">1</span></a></div></div></div></div></div><div class="card widget" data-type="subscribe-email"><div class="card-content"><div class="menu"><h3 class="menu-label">订阅更新</h3><form action="https://feedburner.google.com/fb/a/mailverify" method="post" target="popupwindow" onsubmit="window.open(&#039;https://feedburner.google.com/fb/a/mailverify?uri=&#039;,&#039;popupwindow&#039;,&#039;scrollbars=yes,width=550,height=520&#039;);return true"><input type="hidden" value="" name="uri"><input type="hidden" name="loc" value="en_US"><div class="field has-addons"><div class="control has-icons-left is-expanded"><input class="input" name="email" type="email" placeholder="Email"><span class="icon is-small is-left"><i class="fas fa-envelope"></i></span></div><div class="control"><input class="button" type="submit" value="订阅"></div></div></form></div></div></div><div class="column-right-shadow is-hidden-widescreen"></div></div><div class="column column-right is-4-tablet is-4-desktop is-3-widescreen is-hidden-touch is-hidden-desktop-only order-3"><div class="card widget" data-type="recent-posts"><div class="card-content"><h3 class="menu-label">最新文章</h3><article class="media"><div class="media-content"><p class="date"><time dateTime="2026-09-13T16:00:00.000Z">2026-09-14</time></p><p class="title"><a href="/2026/09/14/threejs%E5%AE%9E%E4%BE%8B%E5%8C%96%E6%B8%B2%E6%9F%93InstancedMesh/">Three.js InstancedMesh 实例化渲染</a></p><p class="categories"><a href="/categories/threejs/">threejs</a></p></div></article><article class="media"><div class="media-content"><p class="date"><time dateTime="2026-09-12T02:07:00.000Z">2026-09-12</time></p><p class="title"><a href="/beidou-grid-performance/01-architecture/">北斗网格性能优化（一）：总体架构</a></p><p class="categories"><a href="/categories/%E5%8C%97%E6%96%97%E7%BD%91%E6%A0%BC%E6%80%A7%E8%83%BD%E4%BC%98%E5%8C%96/">北斗网格性能优化</a></p></div></article><article class="media"><div class="media-content"><p class="date"><time dateTime="2026-09-12T02:06:00.000Z">2026-09-12</time></p><p class="title"><a href="/beidou-grid-performance/02-instancing-drawcommand/">北斗网格性能优化（二）：GPU Instancing 与 DrawCommand</a></p><p class="categories"><a href="/categories/%E5%8C%97%E6%96%97%E7%BD%91%E6%A0%BC%E6%80%A7%E8%83%BD%E4%BC%98%E5%8C%96/">北斗网格性能优化</a></p></div></article><article class="media"><div class="media-content"><p class="date"><time dateTime="2026-09-12T02:05:00.000Z">2026-09-12</time></p><p class="title"><a href="/beidou-grid-performance/03-lod-culling/">北斗网格性能优化（三）：LOD 与视锥剔除</a></p><p class="categories"><a href="/categories/%E5%8C%97%E6%96%97%E7%BD%91%E6%A0%BC%E6%80%A7%E8%83%BD%E4%BC%98%E5%8C%96/">北斗网格性能优化</a></p></div></article><article class="media"><div class="media-content"><p class="date"><time dateTime="2026-09-12T02:04:00.000Z">2026-09-12</time></p><p class="title"><a href="/beidou-grid-performance/04-worker-transferable/">北斗网格性能优化（四）：Web Worker 与 Transferable</a></p><p class="categories"><a href="/categories/%E5%8C%97%E6%96%97%E7%BD%91%E6%A0%BC%E6%80%A7%E8%83%BD%E4%BC%98%E5%8C%96/">北斗网格性能优化</a></p></div></article></div></div><div class="card widget" data-type="archives"><div class="card-content"><div class="menu"><h3 class="menu-label">归档</h3><ul class="menu-list"><li><a class="level is-mobile" href="/archives/2026/09/"><span class="level-start"><span class="level-item">九月 2026</span></span><span class="level-end"><span class="level-item tag">14</span></span></a></li><li><a class="level is-mobile" href="/archives/2026/03/"><span class="level-start"><span class="level-item">三月 2026</span></span><span class="level-end"><span class="level-item tag">4</span></span></a></li><li><a class="level is-mobile" href="/archives/2025/03/"><span class="level-start"><span class="level-item">三月 2025</span></span><span class="level-end"><span class="level-item tag">25</span></span></a></li></ul></div></div></div></div></div></div></section><footer class="footer"><div class="container"><div class="level"><div class="level-start"><a class="footer-logo is-block mb-2" href="/"><img src="/img/logo.svg" alt="Hexo" height="28"></a><p class="is-size-7"><span>&copy; 2026 wangyawei</span>  Powered by <a href="https://hexo.io/" target="_blank" rel="noopener">Hexo</a> &amp; <a href="https://github.com/ppoffice/hexo-theme-icarus" target="_blank" rel="noopener">Icarus</a></p><p class="is-size-7">© 2019</p></div><div class="level-end"><div class="field has-addons"><p class="control"><a class="button is-transparent is-large" target="_blank" rel="noopener" title="Creative Commons" href="https://creativecommons.org/"><i class="fab fa-creative-commons"></i></a></p><p class="control"><a class="button is-transparent is-large" target="_blank" rel="noopener" title="Attribution 4.0 International" href="https://creativecommons.org/licenses/by/4.0/"><i class="fab fa-creative-commons-by"></i></a></p><p class="control"><a class="button is-transparent is-large" target="_blank" rel="noopener" title="Download on GitHub" href="https://github.com/ppoffice/hexo-theme-icarus"><i class="fab fa-github"></i></a></p></div></div></div></div></footer><script src="https://cdn.jsdelivr.net/npm/jquery@3.3.1/dist/jquery.min.js"></script><script src="https://cdn.jsdelivr.net/npm/moment@2.22.2/min/moment-with-locales.min.js"></script><script src="https://cdn.jsdelivr.net/npm/clipboard@2.0.4/dist/clipboard.min.js" defer></script><script>moment.locale("zh-cn");</script><script>var IcarusThemeSettings = {
+            article: {
+                highlight: {
+                    clipboard: true,
+                    fold: 'unfolded'
+                }
+            }
+        };</script><script data-pjax src="/js/column.js"></script><a id="back-to-top" title="回到顶端" href="javascript:;"><i class="fas fa-chevron-up"></i></a><script data-pjax src="/js/back_to_top.js" defer></script><!--!--><!--!--><!--!--><script src="https://cdn.jsdelivr.net/npm/cookieconsent@3.1.1/build/cookieconsent.min.js" defer></script><script>window.addEventListener("load", () => {
+      window.cookieconsent.initialise({
+        type: "info",
+        theme: "edgeless",
+        static: false,
+        position: "bottom-left",
+        content: {
+          message: "此网站使用Cookie来改善您的体验。",
+          dismiss: "知道了！",
+          allow: "允许使用Cookie",
+          deny: "拒绝",
+          link: "了解更多",
+          policy: "Cookie政策",
+          href: "https://www.cookiesandyou.com/",
+        },
+        palette: {
+          popup: {
+            background: "#edeff5",
+            text: "#838391"
+          },
+          button: {
+            background: "#4b81e8"
+          },
+        },
+      });
+    });</script><script src="https://cdn.jsdelivr.net/npm/lightgallery@1.10.0/dist/js/lightgallery.min.js" defer></script><script src="https://cdn.jsdelivr.net/npm/justifiedGallery@3.8.1/dist/js/jquery.justifiedGallery.min.js" defer></script><script>window.addEventListener("load", () => {
+            if (typeof $.fn.lightGallery === 'function') {
+                $('.article').lightGallery({ selector: '.gallery-item' });
+            }
+            if (typeof $.fn.justifiedGallery === 'function') {
+                if ($('.justified-gallery > p > .gallery-item').length) {
+                    $('.justified-gallery > p > .gallery-item').unwrap();
+                }
+                $('.justified-gallery').justifiedGallery();
+            }
+        });</script><!--!--><!--!--><script src="https://cdn.jsdelivr.net/npm/pjax@0.2.8/pjax.min.js"></script><script src="/js/pjax.js"></script><!--!--><!--!--><!--!--><script data-pjax src="/js/main.js" defer></script><div class="searchbox"><div class="searchbox-container"><div class="searchbox-header"><div class="searchbox-input-container"><input class="searchbox-input" type="text" placeholder="想要查找什么..."></div><a class="searchbox-close" href="javascript:;">×</a></div><div class="searchbox-body"></div></div></div><script data-pjax src="/js/insight.js" defer></script><script data-pjax>document.addEventListener('DOMContentLoaded', function () {
+            loadInsight({"contentUrl":"/content.json"}, {"hint":"想要查找什么...","untitled":"(无标题)","posts":"文章","pages":"页面","categories":"分类","tags":"标签"});
+        });</script></body></html>
